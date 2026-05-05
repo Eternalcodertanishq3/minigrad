@@ -19,7 +19,6 @@ try:
     HAS_TORCH = True
 except ImportError:
     HAS_TORCH = False
-    pytest.skip("PyTorch not installed, skipping parity tests", allow_module_level=True)
 
 from minigrad import Tensor
 from minigrad.optim import SGD, Adam
@@ -158,6 +157,10 @@ def test_adam_weight_decay_parity():
 
 
 if __name__ == "__main__":
+    if not HAS_TORCH:
+        print("PyTorch not installed. Skipping parity tests.")
+        sys.exit(0)
+
     print("Running optimizer parity tests...")
     tests = [
         test_sgd_parity, test_sgd_momentum_parity,

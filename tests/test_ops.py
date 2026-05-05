@@ -20,7 +20,6 @@ try:
     HAS_TORCH = True
 except ImportError:
     HAS_TORCH = False
-    pytest.skip("PyTorch not installed, skipping parity tests", allow_module_level=True)
 
 from minigrad import Tensor
 
@@ -409,6 +408,10 @@ def test_sub():
 
 
 if __name__ == "__main__":
+    if not HAS_TORCH:
+        print("PyTorch not installed. Skipping parity tests.")
+        sys.exit(0)
+
     print("Running op parity tests...")
     test_functions = [
         test_add, test_add_broadcast, test_mul, test_matmul,

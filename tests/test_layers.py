@@ -19,7 +19,6 @@ try:
     HAS_TORCH = True
 except ImportError:
     HAS_TORCH = False
-    pytest.skip("PyTorch not installed, skipping parity tests", allow_module_level=True)
 
 from minigrad import Tensor
 from minigrad.nn import Linear, Conv2D, ReLU, Sigmoid, Tanh
@@ -193,6 +192,10 @@ def test_sequential():
 
 
 if __name__ == "__main__":
+    if not HAS_TORCH:
+        print("PyTorch not installed. Skipping parity tests.")
+        sys.exit(0)
+
     print("Running layer parity tests...")
     tests = [
         test_linear_layer, test_relu_layer, test_sigmoid_layer,
