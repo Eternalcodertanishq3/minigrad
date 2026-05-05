@@ -4,9 +4,9 @@
 [![PyPI version](https://badge.fury.io/py/minigrad.svg)](https://pypi.org/project/minigrad/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
-> A deep learning framework built from scratch in Python/NumPy. Autograd engine, neural net layers, optimizers, and a trained MNIST model — zero dependencies except NumPy.
-
-**Why this exists:** Anyone can call `model.fit()`. Almost nobody can explain what happens inside `.backward()`. This project proves you can. That's the difference between a library user and a framework builder.
+> Built autograd, Conv2D (im2col), BatchNorm, Adam, and trained a CNN 
+> to 99% on MNIST — using nothing but NumPy. Every gradient verified 
+> against PyTorch to 1e-6 precision.
 
 ## What You Get
 

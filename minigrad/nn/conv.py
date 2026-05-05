@@ -180,7 +180,7 @@ class Conv2D(Module):
                 # (out_ch, N*out_H*out_W) @ (N*out_H*out_W, C*kH*kW) -> (out_ch, C*kH*kW)
                 dw = np.zeros((out_ch, self.in_channels * self.kernel_h * self.kernel_w))
                 for i in range(N):
-                    dw += np.outer(dout[i], cols[i])  # (out_ch, 1) @ (1, C*kH*kW) -> sum
+                    dw += dout[i] @ cols[i].T  # (out_ch, out_H*out_W) @ (out_H*out_W, C*kH*kW)
                 self.weight.grad += dw.reshape(out_ch, self.in_channels, self.kernel_h, self.kernel_w)
 
             # Gradient w.r.t. input

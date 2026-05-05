@@ -42,7 +42,9 @@ def grad_check(
             return (x * x).sum()
         grad_check(f, [x])
     """
-    # Forward pass to get analytical gradients
+    # Zero grads before analytical pass to prevent accumulation
+    for inp in inputs:
+        inp.zero_grad()
     out = f()
     out.backward()
 

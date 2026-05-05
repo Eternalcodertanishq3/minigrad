@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import numpy as np
 from minigrad import Tensor
-from minigrad.nn import Sequential, Conv2D, Linear, ReLU
+from minigrad.nn import Sequential, Conv2D, Linear, ReLU, Flatten
 from minigrad.nn.loss import CrossEntropyLoss
 from minigrad.optim import Adam
 from minigrad.data import MNISTDataset, DataLoader
@@ -66,7 +66,7 @@ def train():
         ReLU(),
 
         # Flatten: (N, 64, 11, 11) -> (N, 7744)
-        # We'll do reshape in forward
+        Flatten(),
 
         # Classifier
         Linear(7744, 128),

@@ -7,6 +7,6 @@ given their gradients. All follow the same interface: zero_grad() then step().
 from minigrad.optim.base import Optimizer
 from minigrad.optim.sgd import SGD
 from minigrad.optim.rmsprop import RMSprop
-from minigrad.optim.adam import Adam
+from minigrad.optim.adam import Adam, AdamW
 
-__all__ = ["Optimizer", "SGD", "RMSprop", "Adam"]
+__all__ = ["Optimizer", "SGD", "RMSprop", "Adam", "AdamW"]
