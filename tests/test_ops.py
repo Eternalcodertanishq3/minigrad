@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 test_ops.py — Parity tests: miniGrad ops vs PyTorch.
 
@@ -20,6 +21,8 @@ try:
     HAS_TORCH = True
 except ImportError:
     HAS_TORCH = False
+    torch = None
+    F = None
 
 from minigrad import Tensor
 

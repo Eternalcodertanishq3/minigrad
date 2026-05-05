@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 test_optim.py — Optimizer step parity tests vs PyTorch.
 
@@ -19,6 +20,8 @@ try:
     HAS_TORCH = True
 except ImportError:
     HAS_TORCH = False
+    torch = None
+    nn = None
 
 from minigrad import Tensor
 from minigrad.optim import SGD, Adam
