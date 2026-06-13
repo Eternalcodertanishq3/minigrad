@@ -22,6 +22,9 @@ except ImportError:
     torch = None
     nn = None
 
+import pytest
+pytestmark = pytest.mark.skipif(not HAS_TORCH, reason="PyTorch not installed")
+
 from minigrad import Tensor
 from minigrad.optim import SGD, Adam
 

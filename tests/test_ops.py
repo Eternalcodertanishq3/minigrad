@@ -23,6 +23,9 @@ except ImportError:
     torch = None
     F = None
 
+import pytest
+pytestmark = pytest.mark.skipif(not HAS_TORCH, reason="PyTorch not installed")
+
 from minigrad import Tensor
 
 

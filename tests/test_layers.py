@@ -22,6 +22,9 @@ except ImportError:
     torch = None
     nn = None
 
+import pytest
+requires_torch = pytest.mark.skipif(not HAS_TORCH, reason="PyTorch not installed")
+
 from minigrad import Tensor
 from minigrad.nn import Linear, Conv2D, ReLU, Sigmoid, Tanh, Flatten, BatchNorm1D, BatchNorm2D, Sequential
 from minigrad.nn.loss import MSELoss, CrossEntropyLoss
@@ -29,6 +32,7 @@ from minigrad.nn.loss import MSELoss, CrossEntropyLoss
 np.random.seed(42)
 
 
+@requires_torch
 def test_linear_layer():
     """Test Linear layer forward and backward against torch.nn.Linear."""
     batch_size, in_features, out_features = 8, 20, 10
@@ -63,6 +67,7 @@ def test_linear_layer():
     np.testing.assert_allclose(mg_linear.bias.grad, pt_linear.bias.grad.numpy(), atol=1e-5)
 
 
+@requires_torch
 def test_relu_layer():
     """Test ReLU layer against torch.nn.ReLU."""
     x_data = np.random.randn(8, 10)
@@ -81,6 +86,7 @@ def test_relu_layer():
     np.testing.assert_allclose(x_mg.grad, x_pt.grad.numpy(), atol=1e-6)
 
 
+@requires_torch
 def test_sigmoid_layer():
     """Test Sigmoid layer against torch.nn.Sigmoid."""
     x_data = np.random.randn(8, 10)
@@ -99,6 +105,7 @@ def test_sigmoid_layer():
     np.testing.assert_allclose(x_mg.grad, x_pt.grad.numpy(), atol=1e-6)
 
 
+@requires_torch
 def test_tanh_layer():
     """Test Tanh layer against torch.nn.Tanh."""
     x_data = np.random.randn(8, 10)
@@ -117,6 +124,7 @@ def test_tanh_layer():
     np.testing.assert_allclose(x_mg.grad, x_pt.grad.numpy(), atol=1e-6)
 
 
+@requires_torch
 def test_mse_loss():
     """Test MSELoss against torch.nn.MSELoss."""
     pred_data = np.random.randn(8, 5)
@@ -136,6 +144,7 @@ def test_mse_loss():
     np.testing.assert_allclose(pred_mg.grad, pred_pt.grad.numpy(), atol=1e-6)
 
 
+@requires_torch
 def test_cross_entropy_loss():
     """Test CrossEntropyLoss against torch.nn.CrossEntropyLoss."""
     batch_size, num_classes = 16, 10
@@ -156,6 +165,7 @@ def test_cross_entropy_loss():
     np.testing.assert_allclose(logits_mg.grad, logits_pt.grad.numpy(), atol=1e-6)
 
 
+@requires_torch
 def test_sequential():
     """Test Sequential container against equivalent PyTorch Sequential."""
     x_data = np.random.randn(4, 10)
@@ -193,6 +203,7 @@ def test_sequential():
     np.testing.assert_allclose(x_mg.grad, x_pt.grad.numpy(), atol=1e-5)
 
 
+@requires_torch
 def test_conv2d_layer_parity():
     """Test Conv2D forward and backward against torch.nn.Conv2d."""
     x_data = np.random.randn(2, 3, 5, 5)
@@ -238,6 +249,7 @@ def test_conv2d_sequential_gradients_with_non_grad_input():
     assert np.abs(conv.bias.grad).sum() > 0.0
 
 
+@requires_torch
 def test_batchnorm1d_train_parity():
     x_data = np.random.randn(6, 4)
 
@@ -263,6 +275,7 @@ def test_batchnorm1d_train_parity():
     np.testing.assert_allclose(mg_bn.beta.grad, pt_bn.bias.grad.numpy(), atol=1e-5)
 
 
+@requires_torch
 def test_batchnorm2d_train_parity():
     x_data = np.random.randn(3, 4, 5, 5)
 
