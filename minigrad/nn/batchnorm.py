@@ -51,6 +51,8 @@ class BatchNorm1D(Module):
         Training:   use batch mean/var, update running stats
         Evaluation: use running mean/var, don't update
         """
+        axis: int | tuple[int, ...]
+        shape: tuple[int, ...]
         if x.data.ndim == 2:
             # (N, C) — fully connected layer output
             axis = 0
@@ -73,7 +75,8 @@ class BatchNorm1D(Module):
             # Scale and shift
             out_data = self.gamma.data.reshape(shape) * x_normalized + self.beta.data.reshape(shape)
 
-            result = Tensor(out_data, requires_grad=x.requires_grad,
+            requires_grad = x.requires_grad or self.gamma.requires_grad or self.beta.requires_grad
+            result = Tensor(out_data, requires_grad=requires_grad,
                            _children=(x, self.gamma, self.beta), _op="batch_norm_1d")
 
             # Update running statistics (no gradient here)
@@ -110,7 +113,20 @@ class BatchNorm1D(Module):
             # Evaluation mode: use running statistics
             x_normalized = (x.data - self.running_mean.reshape(shape)) / np.sqrt(self.running_var.reshape(shape) + self.eps)
             out_data = self.gamma.data.reshape(shape) * x_normalized + self.beta.data.reshape(shape)
-            result = Tensor(out_data, requires_grad=False)  # No gradients in eval
+            requires_grad = x.requires_grad or self.gamma.requires_grad or self.beta.requires_grad
+            result = Tensor(out_data, requires_grad=requires_grad,
+                           _children=(x, self.gamma, self.beta), _op="batch_norm_1d_eval")
+
+            def _backward() -> None:
+                if self.gamma.requires_grad:
+                    self.gamma.grad += (result.grad * x_normalized).sum(axis=axis).flatten()
+                if self.beta.requires_grad:
+                    self.beta.grad += result.grad.sum(axis=axis).flatten()
+                if x.requires_grad:
+                    scale = self.gamma.data.reshape(shape) / np.sqrt(self.running_var.reshape(shape) + self.eps)
+                    x.grad += result.grad * scale
+
+            result._backward = _backward
 
         return result
 
@@ -154,7 +170,8 @@ class BatchNorm2D(Module):
             x_normalized = (x.data - batch_mean) / np.sqrt(batch_var + self.eps)
             out_data = self.gamma.data.reshape(shape) * x_normalized + self.beta.data.reshape(shape)
 
-            result = Tensor(out_data, requires_grad=x.requires_grad,
+            requires_grad = x.requires_grad or self.gamma.requires_grad or self.beta.requires_grad
+            result = Tensor(out_data, requires_grad=requires_grad,
                            _children=(x, self.gamma, self.beta), _op="batch_norm_2d")
 
             # Update running stats
@@ -187,7 +204,20 @@ class BatchNorm2D(Module):
         else:
             x_normalized = (x.data - self.running_mean.reshape(shape)) / np.sqrt(self.running_var.reshape(shape) + self.eps)
             out_data = self.gamma.data.reshape(shape) * x_normalized + self.beta.data.reshape(shape)
-            result = Tensor(out_data, requires_grad=False)
+            requires_grad = x.requires_grad or self.gamma.requires_grad or self.beta.requires_grad
+            result = Tensor(out_data, requires_grad=requires_grad,
+                           _children=(x, self.gamma, self.beta), _op="batch_norm_2d_eval")
+
+            def _backward() -> None:
+                if self.gamma.requires_grad:
+                    self.gamma.grad += (result.grad * x_normalized).sum(axis=axis).flatten()
+                if self.beta.requires_grad:
+                    self.beta.grad += result.grad.sum(axis=axis).flatten()
+                if x.requires_grad:
+                    scale = self.gamma.data.reshape(shape) / np.sqrt(self.running_var.reshape(shape) + self.eps)
+                    x.grad += result.grad * scale
+
+            result._backward = _backward
 
         return result
 

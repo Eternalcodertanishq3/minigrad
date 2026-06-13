@@ -33,6 +33,8 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "matplotlib>=3.6",
+    "ruff>=0.4",
+    "mypy>=1.8",
 ]
 torch = [
     "torch>=2.0",
@@ -44,12 +46,25 @@ Documentation = "https://github.com/Eternalcodertanishq3/minigrad#readme"
 Repository = "https://github.com/Eternalcodertanishq3/minigrad"
 Issues = "https://github.com/Eternalcodertanishq3/minigrad/issues"
 
+[project.scripts]
+minigrad = "minigrad.cli:main"
+minigrad-demo-scalar = "minigrad.cli:demo_scalar"
+minigrad-demo-linear = "minigrad.cli:demo_linear_regression"
+minigrad-demo-xor = "minigrad.cli:demo_xor"
+minigrad-bench-ops = "minigrad.cli:bench_ops"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+ignore = ["E402"]
 
 [tool.coverage.run]
 source = ["minigrad"]

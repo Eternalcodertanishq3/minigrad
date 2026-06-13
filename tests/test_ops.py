@@ -11,7 +11,6 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import pytest
 import numpy as np
 
 # Skip all tests if PyTorch is not installed
@@ -261,6 +260,36 @@ def test_sum_axis():
     np.testing.assert_allclose(x_mg.grad, x_pt.grad.numpy(), atol=1e-6)
 
 
+def test_sum_negative_axis():
+    a = np.random.randn(2, 3, 4)
+
+    x_mg = Tensor(a, requires_grad=True)
+    z_mg = x_mg.sum(axis=-1)
+    z_mg.backward()
+
+    x_pt = torch.tensor(a, requires_grad=True, dtype=torch.float64)
+    z_pt = x_pt.sum(dim=-1)
+    z_pt.backward(torch.ones_like(z_pt))
+
+    np.testing.assert_allclose(z_mg.data, z_pt.detach().numpy(), atol=1e-6)
+    np.testing.assert_allclose(x_mg.grad, x_pt.grad.numpy(), atol=1e-6)
+
+
+def test_sum_tuple_axis_keepdims():
+    a = np.random.randn(2, 3, 4)
+
+    x_mg = Tensor(a, requires_grad=True)
+    z_mg = x_mg.sum(axis=(0, -1), keepdims=True)
+    z_mg.backward()
+
+    x_pt = torch.tensor(a, requires_grad=True, dtype=torch.float64)
+    z_pt = x_pt.sum(dim=(0, -1), keepdim=True)
+    z_pt.backward(torch.ones_like(z_pt))
+
+    np.testing.assert_allclose(z_mg.data, z_pt.detach().numpy(), atol=1e-6)
+    np.testing.assert_allclose(x_mg.grad, x_pt.grad.numpy(), atol=1e-6)
+
+
 # ---------------------------------------------------------------------------
 # Mean
 # ---------------------------------------------------------------------------
@@ -275,6 +304,36 @@ def test_mean():
     x_pt = torch.tensor(a, requires_grad=True, dtype=torch.float64)
     z_pt = x_pt.mean()
     z_pt.backward()
+
+    np.testing.assert_allclose(z_mg.data, z_pt.detach().numpy(), atol=1e-6)
+    np.testing.assert_allclose(x_mg.grad, x_pt.grad.numpy(), atol=1e-6)
+
+
+def test_mean_negative_axis():
+    a = np.random.randn(2, 3, 4)
+
+    x_mg = Tensor(a, requires_grad=True)
+    z_mg = x_mg.mean(axis=-1)
+    z_mg.backward()
+
+    x_pt = torch.tensor(a, requires_grad=True, dtype=torch.float64)
+    z_pt = x_pt.mean(dim=-1)
+    z_pt.backward(torch.ones_like(z_pt))
+
+    np.testing.assert_allclose(z_mg.data, z_pt.detach().numpy(), atol=1e-6)
+    np.testing.assert_allclose(x_mg.grad, x_pt.grad.numpy(), atol=1e-6)
+
+
+def test_mean_tuple_axis():
+    a = np.random.randn(2, 3, 4)
+
+    x_mg = Tensor(a, requires_grad=True)
+    z_mg = x_mg.mean(axis=(0, -1))
+    z_mg.backward()
+
+    x_pt = torch.tensor(a, requires_grad=True, dtype=torch.float64)
+    z_pt = x_pt.mean(dim=(0, -1))
+    z_pt.backward(torch.ones_like(z_pt))
 
     np.testing.assert_allclose(z_mg.data, z_pt.detach().numpy(), atol=1e-6)
     np.testing.assert_allclose(x_mg.grad, x_pt.grad.numpy(), atol=1e-6)

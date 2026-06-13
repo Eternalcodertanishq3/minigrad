@@ -27,21 +27,9 @@ jobs:
         pip install numpy matplotlib pytest pytest-cov
         pip install -e ".[dev]"
 
-    - name: Run gradient check tests
+    - name: Run full test suite
       run: |
-        python tests/test_grad_check.py
-
-    - name: Run operation tests
-      run: |
-        python tests/test_ops.py
-
-    - name: Run layer tests
-      run: |
-        python tests/test_layers.py
-
-    - name: Run optimizer tests
-      run: |
-        python tests/test_optim.py
+        python -m pytest --cov=minigrad --cov-report=xml
 
     - name: Run scalar autograd example
       run: |
@@ -75,7 +63,7 @@ jobs:
         pip install ruff mypy
     - name: Run Ruff linter
       run: |
-        ruff check minigrad/ tests/ examples/ || true
+        ruff check minigrad/ tests/ examples/
     - name: Run type checker
       run: |
-        mypy minigrad/ --ignore-missing-imports || true
+        mypy minigrad/ --ignore-missing-imports

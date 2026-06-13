@@ -46,6 +46,8 @@ setup(
             "pytest>=7.0",
             "pytest-cov>=4.0",
             "matplotlib>=3.6",
+            "ruff>=0.4",
+            "mypy>=1.8",
         ],
         "torch": [
             "torch>=2.0",
@@ -53,7 +55,11 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "minigrad-train=examples.04_mnist_mlp:train",
+            "minigrad=minigrad.cli:main",
+            "minigrad-demo-scalar=minigrad.cli:demo_scalar",
+            "minigrad-demo-linear=minigrad.cli:demo_linear_regression",
+            "minigrad-demo-xor=minigrad.cli:demo_xor",
+            "minigrad-bench-ops=minigrad.cli:bench_ops",
         ],
     },
 )

@@ -20,7 +20,7 @@ from minigrad.nn import Sequential, Linear, ReLU
 from minigrad.nn.loss import CrossEntropyLoss
 from minigrad.optim import Adam
 from minigrad.data import MNISTDataset, DataLoader
-from minigrad.utils import count_parameters, accuracy
+from minigrad.utils import count_parameters
 
 
 def train():
@@ -33,7 +33,7 @@ def train():
     epochs = 5
     lr = 1e-3
 
-    print(f"\nHyperparameters:")
+    print("\nHyperparameters:")
     print(f"  Batch size: {batch_size}")
     print(f"  Epochs:     {epochs}")
     print(f"  Learning rate: {lr}")
@@ -105,7 +105,7 @@ def train():
 
     print("-" * 50)
     print(f"\nFinal test accuracy: {acc:.2f}%")
-    print(f"Target: ~97%")
+    print("Target: ~97%")
 
 
 if __name__ == "__main__":

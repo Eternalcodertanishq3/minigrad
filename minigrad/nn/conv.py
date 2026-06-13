@@ -165,7 +165,8 @@ class Conv2D(Module):
         out = out + self.bias.data.reshape(1, -1, 1)  # (N, out_ch, out_H*out_W)
         out = out.reshape(N, out_ch, out_h, out_w)
 
-        result = Tensor(out, requires_grad=x.requires_grad, _children=(x, self.weight, self.bias), _op="conv2d")
+        requires_grad = x.requires_grad or self.weight.requires_grad or self.bias.requires_grad
+        result = Tensor(out, requires_grad=requires_grad, _children=(x, self.weight, self.bias), _op="conv2d")
 
         def _backward() -> None:
             # dout shape: (N, out_ch, out_h, out_w)

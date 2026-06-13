@@ -80,6 +80,7 @@ class Tensor:
         return self.__add__(other)
 
     def __sub__(self, other: Union[Tensor, ArrayLike]) -> Tensor:
+        other = self._ensure_tensor(other)
         return self.__add__(-other)
 
     def __rsub__(self, other: Union[Tensor, ArrayLike]) -> Tensor:
@@ -133,6 +134,12 @@ class Tensor:
         return out
 
     def __matmul__(self, other: Tensor) -> Tensor:
+        if self.data.ndim != 2 or other.data.ndim != 2:
+            raise ValueError(
+                "Tensor matmul currently supports 2D tensors only; "
+                f"got shapes {self.data.shape} and {other.data.shape}"
+            )
+
         out = Tensor(
             self.data @ other.data,
             requires_grad=self.requires_grad or other.requires_grad,
@@ -269,9 +276,22 @@ class Tensor:
     # Shape operations
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _normalize_axes(axis: Union[int, Tuple[int, ...]], ndim: int) -> Tuple[int, ...]:
+        axes = (axis,) if isinstance(axis, int) else tuple(axis)
+        normalized = []
+        for a in axes:
+            if not -ndim <= a < ndim:
+                raise ValueError(f"axis {a} is out of bounds for tensor of dimension {ndim}")
+            normalized.append(a % ndim)
+        if len(set(normalized)) != len(normalized):
+            raise ValueError(f"duplicate value in 'axis': {axis}")
+        return tuple(sorted(normalized))
+
     def sum(self, axis: Optional[Union[int, Tuple[int, ...]]] = None, keepdims: bool = False) -> Tensor:
+        axes = None if axis is None else Tensor._normalize_axes(axis, self.data.ndim)
         out = Tensor(
-            self.data.sum(axis=axis, keepdims=keepdims),
+            self.data.sum(axis=axes, keepdims=keepdims),
             requires_grad=self.requires_grad,
             _children=(self,),
             _op="sum",
@@ -280,37 +300,24 @@ class Tensor:
         def _backward() -> None:
             if self.requires_grad:
                 grad = out.grad
-                if axis is not None and not keepdims:
-                    # Need to restore reduced dimensions for broadcasting
-                    axes = (axis,) if isinstance(axis, int) else axis
-                    axes_tuple = tuple(axes) if isinstance(axes, tuple) else (axes,)
-                    # Build shape with 1s at reduced axes
-                    shape = []
-                    grad_idx = 0
-                    for i in range(self.data.ndim):
-                        if i in axes_tuple:
-                            shape.append(1)
-                        else:
-                            shape.append(grad.shape[grad_idx])
-                            grad_idx += 1
-                    grad = grad.reshape(shape)
+                if axes is not None and not keepdims:
+                    grad = np.expand_dims(grad, axis=axes)
                 self.grad += np.broadcast_to(grad, self.data.shape)
 
         out._backward = _backward
         return out
 
     def mean(self, axis: Optional[Union[int, Tuple[int, ...]]] = None, keepdims: bool = False) -> Tensor:
-        if axis is None:
+        axes = None if axis is None else Tensor._normalize_axes(axis, self.data.ndim)
+        if axes is None:
             n = self.data.size
-        elif isinstance(axis, int):
-            n = self.data.shape[axis]
         else:
             n = 1
-            for a in axis:
+            for a in axes:
                 n *= self.data.shape[a]
 
         out = Tensor(
-            self.data.mean(axis=axis, keepdims=keepdims),
+            self.data.mean(axis=axes, keepdims=keepdims),
             requires_grad=self.requires_grad,
             _children=(self,),
             _op="mean",
@@ -319,18 +326,8 @@ class Tensor:
         def _backward() -> None:
             if self.requires_grad:
                 grad = out.grad / n
-                if axis is not None and not keepdims:
-                    axes = (axis,) if isinstance(axis, int) else axis
-                    axes_tuple = tuple(axes) if isinstance(axes, tuple) else (axes,)
-                    shape = []
-                    grad_idx = 0
-                    for i in range(self.data.ndim):
-                        if i in axes_tuple:
-                            shape.append(1)
-                        else:
-                            shape.append(grad.shape[grad_idx])
-                            grad_idx += 1
-                    grad = grad.reshape(shape)
+                if axes is not None and not keepdims:
+                    grad = np.expand_dims(grad, axis=axes)
                 self.grad += np.broadcast_to(grad, self.data.shape)
 
         out._backward = _backward

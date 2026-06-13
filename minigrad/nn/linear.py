@@ -34,6 +34,7 @@ class Linear(Module):
             requires_grad=True,
         )
 
+        self.bias: Tensor | None
         if bias:
             self.bias = Tensor(
                 np.zeros(out_features),

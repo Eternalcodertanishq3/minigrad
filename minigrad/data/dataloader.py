@@ -7,7 +7,7 @@ Supports shuffling, custom batch size, and drop_last.
 from __future__ import annotations
 
 import numpy as np
-from typing import List, Tuple, Iterator
+from typing import Tuple, Iterator
 
 from minigrad.data.dataset import Dataset
 

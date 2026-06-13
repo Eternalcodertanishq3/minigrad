@@ -77,10 +77,10 @@ class MNISTDataset(Dataset):
                 try:
                     urllib.request.urlretrieve(url, filepath)
                     print(f"Saved to {filepath}")
-                except Exception as e:
+                except Exception:
                     # Fallback mirror
                     fallback_url = f"https://ossci-datasets.s3.amazonaws.com/mnist/{filename}"
-                    print(f"Retrying from mirror...")
+                    print("Retrying from mirror...")
                     urllib.request.urlretrieve(fallback_url, filepath)
                     print(f"Saved to {filepath}")
 
@@ -102,7 +102,7 @@ class MNISTDataset(Dataset):
             self.labels = np.frombuffer(f.read(), dtype=np.uint8)
 
         # Normalize to [0, 1]
-        self.images = self.images.astype(np.float64) / 255.0
+        self.images = self.images.astype(np.float64) / 255.0  # type: ignore[assignment]
 
     def __len__(self) -> int:
         return len(self.images)

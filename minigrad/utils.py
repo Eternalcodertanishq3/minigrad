@@ -58,7 +58,7 @@ def grad_check(
         numerical_grad = np.zeros_like(inp.data)
 
         # Finite differences: (f(x+eps) - f(x-eps)) / (2*eps)
-        it = np.nditer(inp.data, flags=["multi_index"], op_flags=["readwrite"])
+        it = np.nditer(inp.data, flags=["multi_index"], op_flags=["readwrite"])  # type: ignore[list-item]
         while not it.finished:
             idx = it.multi_index
             original = inp.data[idx]
@@ -106,7 +106,7 @@ def numerical_gradient(f: Callable, x: Tensor, eps: float = 1e-5) -> np.ndarray:
         Numerical gradient array with same shape as x.data
     """
     grad = np.zeros_like(x.data)
-    it = np.nditer(x.data, flags=["multi_index"], op_flags=["readwrite"])
+    it = np.nditer(x.data, flags=["multi_index"], op_flags=["readwrite"])  # type: ignore[list-item]
 
     while not it.finished:
         idx = it.multi_index

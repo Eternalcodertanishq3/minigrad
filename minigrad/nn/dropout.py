@@ -46,14 +46,15 @@ class Dropout(Module):
 
         # Inverted dropout: scale during training so eval is a no-op
         scale = 1.0 / (1.0 - self.p)
-        self._mask = (np.random.rand(*x.data.shape) >= self.p).astype(x.data.dtype)
+        mask = (np.random.rand(*x.data.shape) >= self.p).astype(x.data.dtype)
+        self._mask = mask
 
-        out_data = x.data * self._mask * scale
+        out_data = x.data * mask * scale
         out = Tensor(out_data, requires_grad=x.requires_grad, _children=(x,), _op="dropout")
 
         def _backward() -> None:
             if x.requires_grad:
-                x.grad += out.grad * self._mask * scale
+                x.grad += out.grad * mask * scale
 
         out._backward = _backward
         return out

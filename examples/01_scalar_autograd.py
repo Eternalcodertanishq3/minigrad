@@ -13,7 +13,6 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import numpy as np
 from minigrad import Tensor
 
 
@@ -148,9 +147,9 @@ def demo_computation_graph():
 
 if __name__ == "__main__":
     print("\n")
-    print("█" * 60)
-    print("  miniGrad — Scalar Autograd Demonstration")
-    print("█" * 60)
+    print("=" * 60)
+    print("  miniGrad - Scalar Autograd Demonstration")
+    print("=" * 60)
     print("\nThis example shows how miniGrad's autograd engine works")
     print("by computing gradients through various operations.\n")
 

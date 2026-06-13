@@ -36,7 +36,7 @@ def train():
     lr = 1e-3
     weight_decay = 1e-4
 
-    print(f"\nHyperparameters:")
+    print("\nHyperparameters:")
     print(f"  Batch size: {batch_size}")
     print(f"  Epochs:     {epochs}")
     print(f"  Learning rate: {lr}")
@@ -74,11 +74,11 @@ def train():
         Linear(128, 10),
     ])
 
-    print(f"\nModel: CNN")
-    print(f"  Conv2D(1, 32, 3x3) + ReLU")
-    print(f"  Conv2D(32, 64, 3x3, s=2) + ReLU")
-    print(f"  Conv2D(64, 64, 3x3) + ReLU")
-    print(f"  Flatten -> Linear(7744, 128) -> Linear(128, 10)")
+    print("\nModel: CNN")
+    print("  Conv2D(1, 32, 3x3) + ReLU")
+    print("  Conv2D(32, 64, 3x3, s=2) + ReLU")
+    print("  Conv2D(64, 64, 3x3) + ReLU")
+    print("  Flatten -> Linear(7744, 128) -> Linear(128, 10)")
     print(f"Total parameters: {count_parameters(model):,}")
 
     criterion = CrossEntropyLoss()
@@ -128,7 +128,7 @@ def train():
 
     print("-" * 50)
     print(f"\nFinal test accuracy: {acc:.2f}%")
-    print(f"Target: >= 99%")
+    print("Target: >= 99%")
 
 
 if __name__ == "__main__":

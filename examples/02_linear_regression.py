@@ -36,7 +36,7 @@ def train():
     # Generate synthetic data
     x_data, y_data = generate_data(m_true=2.0, b_true=-1.0, n=100, noise=0.3)
     print(f"Generated {len(x_data)} data points")
-    print(f"True parameters: m = 2.0, b = -1.0")
+    print("True parameters: m = 2.0, b = -1.0")
 
     # Initialize parameters (random guesses)
     np.random.seed(0)
@@ -69,9 +69,9 @@ def train():
                   f"m = {m.data.item():.4f}, b = {b.data.item():.4f}")
 
     print("-" * 40)
-    print(f"\nFinal results:")
+    print("\nFinal results:")
     print(f"  Learned:  m = {m.data.item():.4f}, b = {b.data.item():.4f}")
-    print(f"  Expected: m = 2.0000, b = -1.0000")
+    print("  Expected: m = 2.0000, b = -1.0000")
     print(f"  MSE on true parameters: "
           f"{(m.data.item() - 2.0)**2 + (b.data.item() - (-1.0))**2:.6f}")
 

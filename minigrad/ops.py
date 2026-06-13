@@ -11,7 +11,7 @@ the computation graph.
 from __future__ import annotations
 
 import numpy as np
-from typing import Tuple, Optional, Union
+from typing import Any, Tuple, Optional, Union
 
 from minigrad.tensor import Tensor
 
@@ -194,7 +194,7 @@ def stack(tensors: list, axis: int = 0) -> Tensor:
     def _backward() -> None:
         for i, t in enumerate(tensors):
             if t.requires_grad:
-                idx = [slice(None)] * out.grad.ndim
+                idx: list[Any] = [slice(None)] * out.grad.ndim
                 idx[axis] = i
                 t.grad += out.grad[tuple(idx)]
 

@@ -11,7 +11,6 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import pytest
 import numpy as np
 
 try:
@@ -24,7 +23,7 @@ except ImportError:
     nn = None
 
 from minigrad import Tensor
-from minigrad.nn import Linear, Conv2D, ReLU, Sigmoid, Tanh
+from minigrad.nn import Linear, Conv2D, ReLU, Sigmoid, Tanh, Flatten, BatchNorm1D, BatchNorm2D, Sequential
 from minigrad.nn.loss import MSELoss, CrossEntropyLoss
 
 np.random.seed(42)
@@ -192,6 +191,117 @@ def test_sequential():
 
     np.testing.assert_allclose(out_mg.data, out_pt.detach().numpy(), atol=1e-5)
     np.testing.assert_allclose(x_mg.grad, x_pt.grad.numpy(), atol=1e-5)
+
+
+def test_conv2d_layer_parity():
+    """Test Conv2D forward and backward against torch.nn.Conv2d."""
+    x_data = np.random.randn(2, 3, 5, 5)
+
+    mg_conv = Conv2D(3, 4, kernel_size=3, stride=1, padding=1)
+    x_mg = Tensor(x_data, requires_grad=True)
+    out_mg = mg_conv(x_mg)
+    loss_mg = out_mg.sum()
+    loss_mg.backward()
+
+    pt_conv = nn.Conv2d(3, 4, kernel_size=3, stride=1, padding=1, bias=True).double()
+    pt_conv.weight.data = torch.tensor(mg_conv.weight.data, dtype=torch.float64)
+    pt_conv.bias.data = torch.tensor(mg_conv.bias.data, dtype=torch.float64)
+    x_pt = torch.tensor(x_data, requires_grad=True, dtype=torch.float64)
+    out_pt = pt_conv(x_pt)
+    loss_pt = out_pt.sum()
+    loss_pt.backward()
+
+    np.testing.assert_allclose(out_mg.data, out_pt.detach().numpy(), atol=1e-5)
+    np.testing.assert_allclose(x_mg.grad, x_pt.grad.numpy(), atol=1e-5)
+    np.testing.assert_allclose(mg_conv.weight.grad, pt_conv.weight.grad.numpy(), atol=1e-5)
+    np.testing.assert_allclose(mg_conv.bias.grad, pt_conv.bias.grad.numpy(), atol=1e-5)
+
+
+def test_conv2d_sequential_gradients_with_non_grad_input():
+    """Conv params must learn even when input batches do not require gradients."""
+    model = Sequential([
+        Conv2D(1, 2, kernel_size=3, padding=1),
+        ReLU(),
+        Flatten(),
+        Linear(2 * 4 * 4, 3),
+    ])
+    x = Tensor(np.random.randn(5, 1, 4, 4))
+    y = np.array([0, 1, 2, 1, 0])
+
+    loss = CrossEntropyLoss()(model(x), y)
+    for p in model.parameters():
+        p.zero_grad()
+    loss.backward()
+
+    conv = model.layers[0]
+    assert np.abs(conv.weight.grad).sum() > 0.0
+    assert np.abs(conv.bias.grad).sum() > 0.0
+
+
+def test_batchnorm1d_train_parity():
+    x_data = np.random.randn(6, 4)
+
+    mg_bn = BatchNorm1D(4)
+    mg_bn.gamma.data = np.random.randn(4)
+    mg_bn.beta.data = np.random.randn(4)
+    x_mg = Tensor(x_data, requires_grad=True)
+    out_mg = mg_bn(x_mg)
+    loss_mg = out_mg.sum()
+    loss_mg.backward()
+
+    pt_bn = nn.BatchNorm1d(4, eps=mg_bn.eps, momentum=mg_bn.momentum).double()
+    pt_bn.weight.data = torch.tensor(mg_bn.gamma.data, dtype=torch.float64)
+    pt_bn.bias.data = torch.tensor(mg_bn.beta.data, dtype=torch.float64)
+    x_pt = torch.tensor(x_data, requires_grad=True, dtype=torch.float64)
+    out_pt = pt_bn(x_pt)
+    loss_pt = out_pt.sum()
+    loss_pt.backward()
+
+    np.testing.assert_allclose(out_mg.data, out_pt.detach().numpy(), atol=1e-5)
+    np.testing.assert_allclose(x_mg.grad, x_pt.grad.numpy(), atol=1e-5)
+    np.testing.assert_allclose(mg_bn.gamma.grad, pt_bn.weight.grad.numpy(), atol=1e-5)
+    np.testing.assert_allclose(mg_bn.beta.grad, pt_bn.bias.grad.numpy(), atol=1e-5)
+
+
+def test_batchnorm2d_train_parity():
+    x_data = np.random.randn(3, 4, 5, 5)
+
+    mg_bn = BatchNorm2D(4)
+    mg_bn.gamma.data = np.random.randn(4)
+    mg_bn.beta.data = np.random.randn(4)
+    x_mg = Tensor(x_data, requires_grad=True)
+    out_mg = mg_bn(x_mg)
+    loss_mg = out_mg.sum()
+    loss_mg.backward()
+
+    pt_bn = nn.BatchNorm2d(4, eps=mg_bn.eps, momentum=mg_bn.momentum).double()
+    pt_bn.weight.data = torch.tensor(mg_bn.gamma.data, dtype=torch.float64)
+    pt_bn.bias.data = torch.tensor(mg_bn.beta.data, dtype=torch.float64)
+    x_pt = torch.tensor(x_data, requires_grad=True, dtype=torch.float64)
+    out_pt = pt_bn(x_pt)
+    loss_pt = out_pt.sum()
+    loss_pt.backward()
+
+    np.testing.assert_allclose(out_mg.data, out_pt.detach().numpy(), atol=1e-5)
+    np.testing.assert_allclose(x_mg.grad, x_pt.grad.numpy(), atol=1e-5)
+    np.testing.assert_allclose(mg_bn.gamma.grad, pt_bn.weight.grad.numpy(), atol=1e-5)
+    np.testing.assert_allclose(mg_bn.beta.grad, pt_bn.bias.grad.numpy(), atol=1e-5)
+
+
+def test_batchnorm_eval_keeps_affine_gradients():
+    x_data = np.random.randn(6, 4)
+    mg_bn = BatchNorm1D(4)
+    mg_bn.running_mean = np.random.randn(4)
+    mg_bn.running_var = np.random.rand(4) + 0.5
+    mg_bn.eval()
+
+    x_mg = Tensor(x_data, requires_grad=True)
+    out_mg = mg_bn(x_mg)
+    out_mg.sum().backward()
+
+    assert np.abs(x_mg.grad).sum() > 0.0
+    assert np.abs(mg_bn.gamma.grad).sum() > 0.0
+    assert np.abs(mg_bn.beta.grad).sum() > 0.0
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ cycle detection for the dynamic computation graph built by Tensor operations.
 """
 from __future__ import annotations
 
-from typing import List, Set, Optional, Callable, Dict, Any
+from typing import List, Set, Callable, Dict, Any
 from collections import defaultdict
 
 from minigrad.tensor import Tensor
@@ -79,7 +79,7 @@ def print_graph(root: Tensor, max_depth: int = 10) -> None:
         if depth > max_depth:
             return
         node_id = id(node)
-        prefix = "  " * depth + ("└── " if depth > 0 else "")
+        prefix = "  " * depth + ("`-- " if depth > 0 else "")
         grad_info = f"  grad={node.grad.shape}" if node.requires_grad else ""
         op_info = f"  [{node._op}]" if node._op else "  [leaf]"
         lines.append(f"{prefix}Tensor{node.data.shape}{op_info}{grad_info}")
@@ -109,7 +109,7 @@ def has_cycle(root: Tensor) -> bool:
     Detect if the computation graph contains a cycle.
     A proper autograd graph should always be a DAG (Directed Acyclic Graph).
     """
-    WHITE, GRAY, BLACK = 0, 1, 2
+    GRAY, BLACK = 1, 2
     state: Dict[int, int] = defaultdict(int)
 
     def _dfs(node: Tensor) -> bool:

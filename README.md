@@ -1,43 +1,47 @@
 # miniGrad
 
 [![CI](https://github.com/Eternalcodertanishq3/minigrad/actions/workflows/ci.yml/badge.svg)](https://github.com/Eternalcodertanishq3/minigrad/actions/workflows/ci.yml)
-[![PyPI version](https://badge.fury.io/py/minigrad.svg)](https://pypi.org/project/minigrad/)
+[![PyPI version](https://badge.fury.io/py/minigrad-framework.svg)](https://pypi.org/project/minigrad-framework/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
-> Built autograd, Conv2D (im2col), BatchNorm, Adam, and trained a CNN 
-> to 99% on MNIST — using nothing but NumPy. Every gradient verified 
-> against PyTorch to 1e-6 precision.
+miniGrad is a NumPy-first deep learning framework built from scratch. It is designed to make the internals of modern autograd systems visible: tensors, dynamic computation graphs, neural-network layers, optimizers, losses, data loading, examples, and PyTorch parity tests.
 
-## What You Get
+The project is now positioned as a serious educational and research-grade NumPy framework. It is intentionally more complete than scalar-first projects like micrograd, more neural-network focused than general NumPy autograd tools, and structured with a roadmap toward tinygrad-style backend/runtime ideas.
 
-| Component | What It Does |
-|-----------|-------------|
-| **Autograd Engine** | Dynamic computation graphs, topological sort, chain rule — the heart of PyTorch |
-| **Tensor Engine** | N-dimensional arrays with gradient tracking and broadcasting |
-| **Layer Library** | Linear, Conv2D (im2col), BatchNorm, Dropout — all built manually |
-| **Optimizer Suite** | SGD + Momentum, RMSProp, Adam + AdamW — from scratch |
-| **Loss Functions** | MSE, CrossEntropy, BCE — all differentiable |
-| **MNIST Demo** | CNN trained to >98% accuracy using only this framework |
+## What miniGrad Provides
+
+| Area | Included |
+| --- | --- |
+| Autograd | Dynamic computation graphs, reverse-mode autodiff, broadcasting-aware gradients |
+| Tensor ops | Add, subtract, multiply, divide, matmul, reductions, reshape, transpose, indexing |
+| Activations | ReLU, Sigmoid, Tanh, GELU, Softmax, LeakyReLU, ELU |
+| Layers | Linear, Conv2D via im2col, BatchNorm1D/2D, Dropout, Dropout2D, Flatten, Sequential |
+| Losses | MSE, CrossEntropy, BCE, BCEWithLogits, NLL |
+| Optimizers | SGD with momentum/Nesterov, RMSProp, Adam, AdamW |
+| Data | Dataset abstraction, DataLoader, MNIST loader, transforms |
+| Tooling | CLI entry points, benchmarks, CI, Ruff, Mypy, PyTorch parity tests |
+
+## Install
+
+```bash
+pip install -e ".[dev,torch]"
+```
+
+Runtime dependency:
+
+```bash
+pip install numpy
+```
+
+Optional development dependencies include `pytest`, `pytest-cov`, `matplotlib`, `ruff`, `mypy`, and `torch` for parity tests.
 
 ## Quick Start
 
-```bash
-pip install numpy matplotlib  # only dependencies
-python examples/01_scalar_autograd.py    # See autograd in action
-python examples/02_linear_regression.py  # Learn y = mx + b
-python examples/03_mlp_xor.py            # MLP solves XOR
-python examples/04_mnist_mlp.py          # MNIST with dense layers
-python examples/05_mnist_cnn.py          # MNIST with CNN (~99%)
-```
-
-## Example Usage
-
 ```python
 from minigrad import Tensor
-from minigrad.nn import Sequential, Linear, ReLU
+from minigrad.nn import Sequential, Linear, ReLU, CrossEntropyLoss
 from minigrad.optim import Adam
 
-# Define a model
 model = Sequential([
     Linear(784, 128),
     ReLU(),
@@ -45,97 +49,109 @@ model = Sequential([
 ])
 
 optimizer = Adam(model.parameters(), lr=1e-3)
+criterion = CrossEntropyLoss()
 
-# Training loop
-for epoch in range(10):
-    for batch_x, batch_y in dataloader:
-        x = Tensor(batch_x)
-        logits = model(x)
-        loss = criterion(logits, batch_y)
+x = Tensor(batch_x.reshape(batch_x.shape[0], -1))
+loss = criterion(model(x), batch_y)
 
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+optimizer.zero_grad()
+loss.backward()
+optimizer.step()
 ```
+
+## CLI
+
+```bash
+minigrad scalar
+minigrad linear-regression
+minigrad xor
+minigrad bench-ops
+```
+
+Direct scripts are also available:
+
+```bash
+python examples/01_scalar_autograd.py
+python examples/02_linear_regression.py
+python examples/03_mlp_xor.py
+python examples/04_mnist_mlp.py
+python examples/05_mnist_cnn.py
+```
+
+The MNIST examples download data on first run. CI uses smaller smoke paths and unit tests so it does not depend on network downloads.
+
+## Verification
+
+Current local verification includes:
+
+```bash
+python -m pytest
+python -m ruff check minigrad tests examples
+python -m mypy minigrad --ignore-missing-imports
+python examples/01_scalar_autograd.py
+python examples/02_linear_regression.py
+python examples/03_mlp_xor.py
+```
+
+The test suite covers core ops, numerical gradient checks, PyTorch parity for major layers and optimizers, public API exports, and regressions for previously fragile paths such as Conv2D gradients with non-gradient input batches, BatchNorm gradient propagation, and negative-axis reductions.
+
+## Compared With Other Projects
+
+| Project | Focus | How miniGrad Differs |
+| --- | --- | --- |
+| micrograd | Tiny scalar autograd engine | miniGrad uses N-dimensional tensors, neural-network layers, optimizers, data utilities, tests, and examples. |
+| HIPS Autograd | General automatic differentiation for NumPy code | miniGrad is a teaching-oriented neural-network framework with explicit modules, optimizers, losses, and training loops. |
+| tinygrad | Small but serious tensor framework with backend/runtime ambitions | miniGrad is currently NumPy/eager-first, with a roadmap for backend boundaries, devices, lazy tracing, and runtime work. |
+| PyTorch/JAX | Production ML ecosystems | miniGrad is for learning, inspection, and small experiments, not large-scale production deployment. |
+
+## Production Readiness
+
+miniGrad is production-quality for educational NumPy experiments when:
+
+- correctness is covered by tests,
+- public APIs are importable from an installed package,
+- CI fails on lint, type, test, and packaging errors,
+- claims in docs match verified behavior.
+
+It is not yet a production replacement for PyTorch, JAX, or tinygrad. The next major step toward tinygrad-class competitiveness is a backend/device abstraction, followed by lazy graph tracing and backend-specific kernels.
 
 ## Architecture
 
-```
+```text
 minigrad/
-├── tensor.py          # Tensor class + autograd engine
-├── ops.py             # Math operations (add, matmul, relu...)
-├── graph.py           # Computation graph + topo sort
-├── nn/
-│   ├── module.py      # Base Module class
-│   ├── linear.py      # Fully connected layer
-│   ├── conv.py        # Conv2D via im2col
-│   ├── activations.py # ReLU, Sigmoid, Tanh, GELU
-│   ├── batchnorm.py   # BatchNorm1D/2D
-│   ├── dropout.py     # Dropout regularization
-│   ├── loss.py        # MSE, CrossEntropy, BCE
-│   └── sequential.py  # Layer container
-├── optim/
-│   ├── sgd.py         # SGD + momentum + weight decay
-│   ├── rmsprop.py     # RMSProp
-│   └── adam.py        # Adam + AdamW
-├── data/
-│   ├── dataset.py     # Dataset base + MNIST loader
-│   ├── dataloader.py  # Batch sampling
-│   └── transforms.py  # Normalize, ToTensor
-└── utils.py           # grad_check, plotting, helpers
+  tensor.py          Tensor class and reverse-mode autograd
+  ops.py             Functional math operations
+  graph.py           Graph traversal and debugging helpers
+  cli.py             Console entry points
+  nn/
+    module.py        Base Module class
+    linear.py        Fully connected layer
+    conv.py          Conv2D via im2col/col2im
+    activations.py   Activation modules
+    batchnorm.py     BatchNorm1D and BatchNorm2D
+    dropout.py       Dropout and Dropout2D
+    loss.py          Differentiable losses
+    sequential.py    Sequential container
+  optim/
+    sgd.py           SGD, momentum, Nesterov, weight decay
+    rmsprop.py       RMSProp
+    adam.py          Adam and AdamW
+  data/
+    dataset.py       Dataset and MNISTDataset
+    dataloader.py    Mini-batch loading
+    transforms.py    Preprocessing transforms
+  utils.py           Grad check, plotting, serialization helpers
 ```
 
-## Key Design Decisions
+## Roadmap
 
-| Decision | Rationale |
-|----------|-----------|
-| **NumPy only** | Zero external dependencies; runs anywhere |
-| **Dynamic graphs** | Build computation graph on each forward pass (like PyTorch) |
-| **Topological sort** | Guarantees correct gradient accumulation order |
-| **im2col for Conv2D** | Same algorithm as cuDNN/PyTorch — convolution becomes matmul |
-| **Kaiming He init** | Essential for training stability in deep networks |
-| **Bias correction in Adam** | Critical for accurate early-step updates |
-
-## PyTorch Parity
-
-Every operation is tested against PyTorch to 1e-6 precision:
-
-```bash
-pytest tests/test_ops.py      # Operation-level parity
-pytest tests/test_layers.py   # Layer forward/backward parity
-pytest tests/test_optim.py    # Optimizer step parity
-pytest tests/test_grad_check.py  # Numerical gradient verification
-```
-
-## Training Results
-
-| Model | Dataset | Accuracy | Epochs |
-|-------|---------|----------|--------|
-| MLP (784-256-128-10) | MNIST | ~97% | 5 |
-| CNN (3 conv + 2 linear) | MNIST | ~99% | 10 |
-
-## Benchmarks
-
-See [BENCHMARKS.md](benchmarks/BENCHMARKS.md) for detailed performance comparisons against NumPy baseline.
-
-miniGrad is **not designed for speed** — it's designed for **understanding**.
-For production use, use PyTorch (C++/CUDA) or JAX (XLA).
-
-## Core Concepts You'll Master
-
-- Backpropagation via chain rule
-- Dynamic computation graphs
-- Topological sort for correct gradient flow
-- im2col algorithm for efficient convolution
-- Kaiming initialization and training stability
-- Adam optimizer with bias correction
-- BatchNorm train/eval mode switching
-- Numerical gradient verification
+1. Expand test coverage for all public operations, layers, losses, and data utilities.
+2. Add package build/install checks to CI.
+3. Add model and optimizer `state_dict` APIs.
+4. Introduce a NumPy backend boundary and explicit device labels.
+5. Add lazy graph tracing and benchmark-driven runtime experiments.
+6. Explore CPU kernel specialization before any GPU claims.
 
 ## License
 
-MIT License — use it, learn from it, build on it.
-
----
-
-*Built with zero ML frameworks and a lot of curiosity.*
+MIT License. Use it, learn from it, and build on it.

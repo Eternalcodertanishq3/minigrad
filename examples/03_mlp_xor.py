@@ -67,10 +67,10 @@ def train():
     criterion = BCELoss()
     optimizer = SGD(model.parameters(), lr=0.5)
 
-    print(f"\nModel architecture:")
-    print(f"  Input:  2 neurons")
-    print(f"  Hidden: 4 neurons (ReLU)")
-    print(f"  Output: 1 neuron (Sigmoid)")
+    print("\nModel architecture:")
+    print("  Input:  2 neurons")
+    print("  Hidden: 4 neurons (ReLU)")
+    print("  Output: 1 neuron (Sigmoid)")
     print(f"  Total parameters: {sum(p.data.size for p in model.parameters())}")
 
     # Training
@@ -110,9 +110,9 @@ def train():
     print(f"\nFinal accuracy: {acc:.2%}")
 
     if acc == 1.0:
-        print("✓ XOR problem solved!")
+        print("PASS: XOR problem solved!")
     else:
-        print("✗ XOR problem not fully solved — try more epochs or different lr")
+        print("FAIL: XOR problem not fully solved - try more epochs or different lr")
 
 
 if __name__ == "__main__":
