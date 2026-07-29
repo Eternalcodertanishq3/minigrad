@@ -63,25 +63,35 @@ def col2im(cols: np.ndarray, x_shape: Tuple[int, ...], kernel_h: int, kernel_w: 
 
     Input:  cols shape (N, C*kH*kW, out_H*out_W)
     Output: dx shape (N, C, H, W)
+
+    Uses vectorized advanced indexing with np.add.at instead of nested Python
+    loops over kernel dimensions, avoiding O(kH*kW) Python-level iterations.
     """
     N, C, H, W = x_shape
     out_h = (H + 2 * padding - kernel_h) // stride + 1
     out_w = (W + 2 * padding - kernel_w) // stride + 1
 
-    # Reshape columns back to window view
+    # Reshape columns back to window view: (N, C, kH, kW, out_h, out_w)
     windows = cols.reshape(N, C, kernel_h, kernel_w, out_h, out_w)
 
-    # Accumulate gradients into padded image
-    if padding > 0:
-        dx_padded = np.zeros((N, C, H + 2 * padding, W + 2 * padding), dtype=np.float64)
-    else:
-        dx_padded = np.zeros((N, C, H, W), dtype=np.float64)
+    H_padded = H + 2 * padding
+    W_padded = W + 2 * padding
+    dx_padded = np.zeros((N, C, H_padded, W_padded), dtype=np.float64)
 
-    for y in range(kernel_h):
-        y_max = y + stride * out_h
-        for x_ in range(kernel_w):
-            x_max = x_ + stride * out_w
-            dx_padded[:, :, y:y_max:stride, x_:x_max:stride] += windows[:, :, y, x_, :, :]
+    # Build vectorized index arrays for all kernel positions at once
+    # ky_idx, kx_idx: kernel offsets (kH, kW)
+    ky_idx, kx_idx = np.mgrid[0:kernel_h, 0:kernel_w]  # each (kH, kW)
+    # oh_idx, ow_idx: output spatial positions (out_h, out_w)
+    oh_idx, ow_idx = np.mgrid[0:out_h, 0:out_w]         # each (out_h, out_w)
+
+    # row_idx[ky, kx, oh, ow] = ky + oh * stride
+    row_idx = ky_idx[:, :, None, None] + oh_idx[None, None, :, :] * stride  # (kH, kW, out_h, out_w)
+    # col_idx[ky, kx, oh, ow] = kx + ow * stride
+    col_idx = kx_idx[:, :, None, None] + ow_idx[None, None, :, :] * stride  # (kH, kW, out_h, out_w)
+
+    # Scatter-add using np.add.at to handle overlapping indices correctly
+    # windows shape: (N, C, kH, kW, out_h, out_w) — matches index dims on axes 2,3,4,5
+    np.add.at(dx_padded, (slice(None), slice(None), row_idx, col_idx), windows)
 
     # Remove padding if present
     if padding > 0:

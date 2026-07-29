@@ -127,13 +127,20 @@ class Tensor:
 
         def _backward() -> None:
             # d(x^n)/dx = n * x^(n-1)
+            # Special case: x**0 → gradient is 0 everywhere.
+            # The naive formula 0 * x^(-1) produces NaN at x=0 (0 * inf).
             if self.requires_grad:
-                self.grad += (other * (self.data ** (other - 1))) * out.grad
+                if other == 0:
+                    # d(x^0)/dx = 0 for all x (constant function)
+                    pass
+                else:
+                    self.grad += (other * (self.data ** (other - 1))) * out.grad
 
         out._backward = _backward
         return out
 
-    def __matmul__(self, other: Tensor) -> Tensor:
+    def __matmul__(self, other: Union[Tensor, ArrayLike]) -> Tensor:
+        other = self._ensure_tensor(other)
         if self.data.ndim != 2 or other.data.ndim != 2:
             raise ValueError(
                 "Tensor matmul currently supports 2D tensors only; "
@@ -157,6 +164,9 @@ class Tensor:
 
         out._backward = _backward
         return out
+
+    def __rmatmul__(self, other: Union[Tensor, ArrayLike]) -> Tensor:
+        return self._ensure_tensor(other).__matmul__(self)
 
     # ------------------------------------------------------------------
     # Activation & math operations

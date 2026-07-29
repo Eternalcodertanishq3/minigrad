@@ -21,7 +21,10 @@ from minigrad.nn.module import Module
 
 class BatchNorm1D(Module):
     """
-    Batch Normalization for 2D or 3D inputs (N, C) or (N, C, L).
+    Batch Normalization for 1D, 2D, or 3D inputs (C,), (N, C), or (N, C, L).
+
+    Unbatched (C,) input is treated as a single-sample batch (1, C),
+    matching PyTorch's BatchNorm1d behavior.
 
     Args:
         num_features: Number of features/channels
@@ -50,7 +53,15 @@ class BatchNorm1D(Module):
 
         Training:   use batch mean/var, update running stats
         Evaluation: use running mean/var, don't update
+
+        Accepts (C,), (N, C), or (N, C, L) inputs.
+        Unbatched (C,) input is treated as a single-sample batch (1, C).
         """
+        # Handle unbatched 1D input (C,) — treat as single-sample batch
+        unbatched = x.data.ndim == 1
+        if unbatched:
+            x = x.reshape(1, -1)
+
         axis: int | tuple[int, ...]
         shape: tuple[int, ...]
         if x.data.ndim == 2:
@@ -127,6 +138,10 @@ class BatchNorm1D(Module):
                     x.grad += result.grad * scale
 
             result._backward = _backward
+
+        # Squeeze back to (C,) if input was unbatched
+        if unbatched:
+            result = result.reshape(-1)
 
         return result
 
