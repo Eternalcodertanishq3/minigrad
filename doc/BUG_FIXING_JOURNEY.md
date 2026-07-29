@@ -142,3 +142,11 @@ return result
 
 - **Unit Test Suite:** All **59/59** tests in `tests/` pass clean.
 - **Regression Suite:** Created isolated verification scripts confirming zero NaN generation on power ops, seamless NumPy `@` interop, vectorized `col2im` execution, and unbatched `BatchNorm1D` forward/backward passes.
+
+---
+
+## 5. Defensive Takeaways & Future Considerations
+
+1. **Tensor Exponent Support in `__pow__`:** `__pow__` was enhanced to defensively accept both raw numeric types (`int`, `float`) and `Tensor` objects as exponents. It dynamically checks for zero exponent tensors (`np.all(other.data == 0)`) to ensure zero-gradient safety even when dynamic graph tensor exponents are used.
+2. **`col2im` Memory Scalability:** The vectorized scatter-add via `np.mgrid` provides dramatic speedups for standard CNN kernel sizes ($3 \times 3$, $5 \times 5$). For massive receptive fields (e.g. $11 \times 11$ on high-res $224 \times 224$ images), the spatial index arrays consume non-trivial RAM (~50MB+). Future high-resolution scale-ups can implement spatial chunking over sliding windows if memory constraints arise.
+3. **Closure Scope Safety:** In `BatchNorm1D`, the boolean flag `unbatched` is bound at invocation time within `forward()`. Because it remains immutable throughout execution, backward closure references safely capture its exact state per forward-pass invocation.

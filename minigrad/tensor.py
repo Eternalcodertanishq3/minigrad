@@ -117,11 +117,12 @@ class Tensor:
     def __rtruediv__(self, other: Union[Tensor, ArrayLike]) -> Tensor:
         return self._ensure_tensor(other) * (self ** (-1))
 
-    def __pow__(self, other: Union[int, float]) -> Tensor:
+    def __pow__(self, other: Union[int, float, Tensor]) -> Tensor:
+        other_data = other.data if isinstance(other, Tensor) else other
         out = Tensor(
-            self.data ** other,
-            requires_grad=self.requires_grad,
-            _children=(self,),
+            self.data ** other_data,
+            requires_grad=self.requires_grad or (isinstance(other, Tensor) and other.requires_grad),
+            _children=(self,) if not isinstance(other, Tensor) else (self, other),
             _op=f"pow^{other}",
         )
 
@@ -129,12 +130,17 @@ class Tensor:
             # d(x^n)/dx = n * x^(n-1)
             # Special case: x**0 → gradient is 0 everywhere.
             # The naive formula 0 * x^(-1) produces NaN at x=0 (0 * inf).
+            is_zero = (other == 0) if not isinstance(other, Tensor) else np.all(other.data == 0)
             if self.requires_grad:
-                if other == 0:
+                if is_zero:
                     # d(x^0)/dx = 0 for all x (constant function)
                     pass
                 else:
-                    self.grad += (other * (self.data ** (other - 1))) * out.grad
+                    self.grad += (other_data * (self.data ** (other_data - 1))) * out.grad
+            if isinstance(other, Tensor) and other.requires_grad:
+                if not is_zero:
+                    # d(a^b)/db = a^b * ln(a)
+                    other.grad += Tensor._unbroadcast(out.data * np.log(self.data + 1e-9) * out.grad, other.data.shape)
 
         out._backward = _backward
         return out
