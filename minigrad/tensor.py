@@ -137,16 +137,16 @@ class Tensor:
             # Special case: x**0 → gradient is 0 everywhere.
             # The naive formula 0 * x^(-1) produces NaN at x=0 (0 * inf).
             is_zero = (other == 0) if not isinstance(other, Tensor) else np.all(other.data == 0)
+            is_negative = (other < 0) if not isinstance(other, Tensor) else np.any(other.data < 0)
             if self.requires_grad:
                 if is_zero:
                     # d(x^0)/dx = 0 for all x (constant function)
                     pass
+                elif is_negative:
+                    safe_data = np.where(self.data == 0, 1e-12, self.data)
+                    self.grad += (other_data * (safe_data ** (other_data - 1))) * out.grad
                 else:
-                    if not isinstance(other, Tensor) and other < 0:
-                        safe_data = np.where(self.data == 0, 1e-12, self.data)
-                        self.grad += (other_data * (safe_data ** (other_data - 1))) * out.grad
-                    else:
-                        self.grad += (other_data * (self.data ** (other_data - 1))) * out.grad
+                    self.grad += (other_data * (self.data ** (other_data - 1))) * out.grad
             if isinstance(other, Tensor) and other.requires_grad:
                 if not is_zero:
                     # d(a^b)/db = a^b * ln(a)

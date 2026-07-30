@@ -31,6 +31,16 @@ def test_pow_negative_exponent_zero_base():
     assert not np.any(np.isinf(x.grad)), f"x.grad contains Inf: {x.grad}"
 
 
+def test_pow_negative_tensor_exponent_zero_base():
+    """Negative pow with Tensor exponent and 0.0 base should not produce NaN gradients."""
+    x = Tensor([[0.0, 2.0]], requires_grad=True)
+    exp = Tensor([-2.0])
+    y = x ** exp
+    y.backward()
+    assert not np.any(np.isnan(x.grad)), f"x.grad contains NaN: {x.grad}"
+    assert not np.any(np.isinf(x.grad)), f"x.grad contains Inf: {x.grad}"
+
+
 def test_no_grad_context_manager():
     """no_grad should function as both a context manager and decorator, skipping graph construction."""
     assert is_grad_enabled() is True
