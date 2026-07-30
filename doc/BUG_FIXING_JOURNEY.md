@@ -150,3 +150,36 @@ return result
 1. **Tensor Exponent Support in `__pow__`:** `__pow__` was enhanced to defensively accept both raw numeric types (`int`, `float`) and `Tensor` objects as exponents. It dynamically checks for zero exponent tensors (`np.all(other.data == 0)`) to ensure zero-gradient safety even when dynamic graph tensor exponents are used.
 2. **`col2im` Memory Scalability:** The vectorized scatter-add via `np.mgrid` provides dramatic speedups for standard CNN kernel sizes ($3 \times 3$, $5 \times 5$). For massive receptive fields (e.g. $11 \times 11$ on high-res $224 \times 224$ images), the spatial index arrays consume non-trivial RAM (~50MB+). Future high-resolution scale-ups can implement spatial chunking over sliding windows if memory constraints arise.
 3. **Closure Scope Safety:** In `BatchNorm1D`, the boolean flag `unbatched` is bound at invocation time within `forward()`. Because it remains immutable throughout execution, backward closure references safely capture its exact state per forward-pass invocation.
+
+---
+
+## 6. Framework Elevation & Minor Edge Case Fixes
+
+Following a full-repository audit, 7 architectural additions and minor edge case guards were implemented to elevate miniGrad from an educational tool to a complete deep learning framework:
+
+### 6.1 Negative Exponent Zero-Base Safety in `__pow__`
+- **Issue:** `x ** (-n)` where `x` contains `0.0` elements computed `0.0 ** (-n-1) = inf`, poisoning gradients.
+- **Fix:** Added a `1e-12` epsilon mask (`np.where(self.data == 0, 1e-12, self.data)`) during negative power gradient evaluation in `minigrad/tensor.py`.
+
+### 6.2 `no_grad` Context Manager & Decorator
+- **Upgrade:** Replaced the simple function decorator in `minigrad/graph.py` with a PyTorch-compatible `no_grad` class that functions as **both** a context manager (`with no_grad():`) and a decorator (`@no_grad()`), managing global gradient tracking via `is_grad_enabled()`.
+
+### 6.3 `Embedding` Layer (`minigrad/nn/embedding.py`)
+- **New Feature:** Implemented dense index lookup table with `np.add.at` gradient scattering for NLP token representations and recommendation systems.
+
+### 6.4 `LayerNorm` Layer (`minigrad/nn/layernorm.py`)
+- **New Feature:** Added per-sample feature normalization over arbitrary trailing dimensions with learnable $\gamma$ and $\beta$ affine parameters for Transformer and sequence model support.
+
+### 6.5 Gradient Clipping Utilities (`minigrad/nn/utils.py`)
+- **New Feature:** Added `clip_grad_norm_` (L2/p-norm clipping) and `clip_grad_value_` (absolute value clipping) for exploding gradient prevention.
+
+### 6.6 Learning Rate Schedulers (`minigrad/optim/schedulers.py`)
+- **New Feature:** Added PyTorch-compatible `StepLR`, `CosineAnnealingLR`, and `ExponentialLR` schedulers with `scheduler.step()`.
+
+### 6.7 `einsum` with Autograd (`minigrad/ops.py`)
+- **New Feature:** Implemented Einstein summation notation parsing and automatic backward gradient contraction for arbitrary tensor shapes.
+
+### Final Verification Status
+- **Total Automated Unit Tests:** **67/67 passing** (`tests/test_new_features.py` added).
+- **Code Coverage:** Full test coverage across all new operations, layers, schedulers, and context managers.
+

@@ -8,5 +8,6 @@ from minigrad.optim.base import Optimizer
 from minigrad.optim.sgd import SGD
 from minigrad.optim.rmsprop import RMSprop
 from minigrad.optim.adam import Adam, AdamW
+from minigrad.optim.schedulers import StepLR, CosineAnnealingLR, ExponentialLR
 
-__all__ = ["Optimizer", "SGD", "RMSprop", "Adam", "AdamW"]
+__all__ = ["Optimizer", "SGD", "RMSprop", "Adam", "AdamW", "StepLR", "CosineAnnealingLR", "ExponentialLR"]

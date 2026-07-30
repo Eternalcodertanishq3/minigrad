@@ -104,6 +104,7 @@ def trace(root: Tensor) -> List[Tensor]:
     return topological_sort(root)
 
 
+
 def has_cycle(root: Tensor) -> bool:
     """
     Detect if the computation graph contains a cycle.
@@ -137,29 +138,37 @@ def detach(tensor: Tensor) -> Tensor:
     return Tensor(tensor.data.copy(), requires_grad=False)
 
 
-def no_grad(func: Callable) -> Callable:
-    """
-    Decorator that disables gradient computation inside a function.
-    Useful for evaluation/inference code.
+# Module-level flag
+_grad_enabled = True
 
+def is_grad_enabled() -> bool:
+    return _grad_enabled
+
+class no_grad:
+    """Context manager and decorator that disables gradient computation.
+    
     Usage:
-        @no_grad
+        with no_grad():
+            out = model(x)  # No graph built
+        
+        @no_grad()
         def evaluate(model, data):
             return model(data)
     """
-    def wrapper(*args, **kwargs):
-        # Save original requires_grad states
-        tensors = [a for a in args if isinstance(a, Tensor)]
-        original = [t.requires_grad for t in tensors]
-
-        for t in tensors:
-            t.requires_grad = False
-
-        result = func(*args, **kwargs)
-
-        for t, req in zip(tensors, original):
-            t.requires_grad = req
-
-        return result
-
-    return wrapper
+    def __enter__(self):
+        global _grad_enabled
+        self._prev = _grad_enabled
+        _grad_enabled = False
+        return self
+    
+    def __exit__(self, *args):
+        global _grad_enabled
+        _grad_enabled = self._prev
+    
+    def __call__(self, func):
+        from functools import wraps
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            with self:
+                return func(*args, **kwargs)
+        return wrapper

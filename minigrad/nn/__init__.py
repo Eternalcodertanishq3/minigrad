@@ -13,6 +13,8 @@ from minigrad.nn.linear import Linear
 from minigrad.nn.conv import Conv2D
 from minigrad.nn.activations import ReLU, Sigmoid, Tanh, GELU, Softmax, LeakyReLU, ELU
 from minigrad.nn.batchnorm import BatchNorm1D, BatchNorm2D
+from minigrad.nn.embedding import Embedding
+from minigrad.nn.layernorm import LayerNorm
 from minigrad.nn.dropout import Dropout, Dropout2D
 from minigrad.nn.flatten import Flatten
 from minigrad.nn.loss import MSELoss, CrossEntropyLoss, BCELoss, BCEWithLogitsLoss, NLLLoss
@@ -40,4 +42,6 @@ __all__ = [
     "BCEWithLogitsLoss",
     "NLLLoss",
     "Sequential",
+    "Embedding",
+    "LayerNorm",
 ]

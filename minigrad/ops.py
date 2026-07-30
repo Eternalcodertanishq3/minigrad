@@ -239,3 +239,70 @@ def pad(x: Tensor, pad_width, constant_values: float = 0) -> Tensor:
 
     out._backward = _backward
     return out
+
+
+def einsum(subscripts: str, *operands: Tensor) -> Tensor:
+    """
+    Einstein summation with autograd support.
+
+    Supports the same notation as np.einsum: 'ij,jk->ik' for matmul,
+    'bij,bjk->bik' for batched matmul, 'ii->' for trace, etc.
+
+    Args:
+        subscripts: Einsum subscript string (e.g., 'ij,jk->ik')
+        *operands:  Input tensors
+
+    Returns:
+        Result tensor with gradients tracked
+    """
+    # Forward pass
+    input_data = [op.data for op in operands]
+    out_data = np.einsum(subscripts, *input_data)
+
+    requires_grad = any(op.requires_grad for op in operands)
+    out = Tensor(out_data, requires_grad=requires_grad,
+                 _children=tuple(operands), _op="einsum")
+
+    # Parse subscripts for backward
+    if '->' in subscripts:
+        input_subs, output_sub = subscripts.split('->')
+    else:
+        input_subs = subscripts
+        output_sub = None
+    input_sub_list = input_subs.split(',')
+
+    def _backward() -> None:
+        for i, op in enumerate(operands):
+            if not op.requires_grad:
+                continue
+            # Build the backward einsum: contract output grad with all other operands
+            # to get the gradient for operand i
+            other_subs = []
+            other_data = []
+
+            # Output gradient subscript
+            if output_sub is not None:
+                grad_sub = output_sub
+            else:
+                # Implicit mode: sorted unique labels not repeated
+                all_labels = ''.join(input_sub_list)
+                from collections import Counter
+                counts = Counter(all_labels)
+                grad_sub = ''.join(sorted(c for c in counts if counts[c] == 1))
+
+            backward_inputs = [grad_sub]
+            backward_data = [out.grad]
+
+            for j, op_j in enumerate(operands):
+                if j != i:
+                    backward_inputs.append(input_sub_list[j])
+                    backward_data.append(op_j.data)
+
+            target_sub = input_sub_list[i]
+            backward_subscripts = ','.join(backward_inputs) + '->' + target_sub
+
+            grad = np.einsum(backward_subscripts, *backward_data)
+            op.grad += grad
+
+    out._backward = _backward
+    return out

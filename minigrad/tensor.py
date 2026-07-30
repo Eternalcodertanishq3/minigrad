@@ -136,7 +136,11 @@ class Tensor:
                     # d(x^0)/dx = 0 for all x (constant function)
                     pass
                 else:
-                    self.grad += (other_data * (self.data ** (other_data - 1))) * out.grad
+                    if not isinstance(other, Tensor) and other < 0:
+                        safe_data = np.where(self.data == 0, 1e-12, self.data)
+                        self.grad += (other_data * (safe_data ** (other_data - 1))) * out.grad
+                    else:
+                        self.grad += (other_data * (self.data ** (other_data - 1))) * out.grad
             if isinstance(other, Tensor) and other.requires_grad:
                 if not is_zero:
                     # d(a^b)/db = a^b * ln(a)
