@@ -275,21 +275,18 @@ def einsum(subscripts: str, *operands: Tensor) -> Tensor:
         for i, op in enumerate(operands):
             if not op.requires_grad:
                 continue
-            # Build the backward einsum: contract output grad with all other operands
-            # to get the gradient for operand i
-            other_subs = []
-            other_data = []
+            target_sub = input_sub_list[i]
 
-            # Output gradient subscript
-            if output_sub is not None:
-                grad_sub = output_sub
-            else:
-                # Implicit mode: sorted unique labels not repeated
-                all_labels = ''.join(input_sub_list)
-                from collections import Counter
-                counts = Counter(all_labels)
-                grad_sub = ''.join(sorted(c for c in counts if counts[c] == 1))
+            # Trace / diagonal contraction special case (e.g. 'ii->')
+            if len(set(target_sub)) < len(target_sub):
+                if output_sub is None or output_sub == "":
+                    dim = op.data.shape[0]
+                    grad = out.grad * np.eye(dim)
+                    op.grad += grad
+                    continue
 
+            # Standard einsum backward pass
+            grad_sub = output_sub if output_sub is not None else ""
             backward_inputs = [grad_sub]
             backward_data = [out.grad]
 
@@ -298,9 +295,7 @@ def einsum(subscripts: str, *operands: Tensor) -> Tensor:
                     backward_inputs.append(input_sub_list[j])
                     backward_data.append(op_j.data)
 
-            target_sub = input_sub_list[i]
-            backward_subscripts = ','.join(backward_inputs) + '->' + target_sub
-
+            backward_subscripts = ",".join(backward_inputs) + "->" + target_sub
             grad = np.einsum(backward_subscripts, *backward_data)
             op.grad += grad
 

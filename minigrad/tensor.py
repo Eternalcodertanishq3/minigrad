@@ -38,11 +38,17 @@ class Tensor:
         _children: Tuple[Tensor, ...] = (),
         _op: str = "",
     ) -> None:
+        from minigrad.graph import is_grad_enabled
+
         self.data = np.array(data, dtype=np.float64)
         self.grad = np.zeros_like(self.data)
-        self.requires_grad = requires_grad
+        if not is_grad_enabled():
+            self.requires_grad = False
+            self._prev: Set[Tensor] = set()
+        else:
+            self.requires_grad = requires_grad
+            self._prev: Set[Tensor] = set(_children)
         self._backward: Callable[[], None] = lambda: None
-        self._prev: Set[Tensor] = set(_children)
         self._op: str = _op
 
     # ------------------------------------------------------------------
