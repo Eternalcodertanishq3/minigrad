@@ -125,8 +125,15 @@ class Tensor:
 
     def __pow__(self, other: Union[int, float, Tensor]) -> Tensor:
         other_data = other.data if isinstance(other, Tensor) else other
+        is_negative = (other < 0) if not isinstance(other, Tensor) else np.any(other.data < 0)
+        if is_negative:
+            safe_base = np.where(self.data == 0, 1e-12, self.data)
+            out_data = safe_base ** other_data
+        else:
+            out_data = self.data ** other_data
+
         out = Tensor(
-            self.data ** other_data,
+            out_data,
             requires_grad=self.requires_grad or (isinstance(other, Tensor) and other.requires_grad),
             _children=(self,) if not isinstance(other, Tensor) else (self, other),
             _op=f"pow^{other}",
