@@ -200,6 +200,50 @@ class Module:
         """Set evaluation mode. Equivalent to train(False)."""
         return self.train(False)
 
+    def freeze(self) -> Module:
+        """
+        Freeze all parameters — set requires_grad=False recursively.
+
+        Frozen parameters are excluded from parameters() and won't
+        accumulate gradients during backward(). Use for transfer
+        learning and LoRA fine-tuning.
+
+        Returns:
+            self (for chaining: model.freeze().train())
+        """
+        for attr in vars(self).values():
+            if isinstance(attr, Tensor) and attr.requires_grad:
+                attr.requires_grad = False
+            elif isinstance(attr, Module):
+                attr.freeze()
+            elif isinstance(attr, (list, tuple)):
+                for item in attr:
+                    if isinstance(item, Module):
+                        item.freeze()
+                    elif isinstance(item, Tensor) and item.requires_grad:
+                        item.requires_grad = False
+        return self
+
+    def unfreeze(self) -> Module:
+        """
+        Unfreeze all parameters — set requires_grad=True recursively.
+
+        Returns:
+            self (for chaining)
+        """
+        for attr in vars(self).values():
+            if isinstance(attr, Tensor):
+                attr.requires_grad = True
+            elif isinstance(attr, Module):
+                attr.unfreeze()
+            elif isinstance(attr, (list, tuple)):
+                for item in attr:
+                    if isinstance(item, Module):
+                        item.unfreeze()
+                    elif isinstance(item, Tensor):
+                        item.requires_grad = True
+        return self
+
     def named_modules(self, prefix: str = "") -> Iterator[tuple]:
         """Yield (name, module) pairs for all submodules."""
         yield prefix, self

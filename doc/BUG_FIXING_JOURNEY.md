@@ -225,3 +225,31 @@ Following a full-repository audit, 7 architectural additions and minor edge case
 - 4 new tests: `test_linear_3d_input`, `test_multihead_attention`, `test_multihead_attention_causal_mask`, `test_transformer_block`
 - End-to-end miniGPT smoke test: training loss decreases, gradients flow through all layers, generation produces coherent output.
 
+---
+
+## 8. Parameter-Efficient Fine-Tuning: LoRA & Module Freezing
+
+### 8.1 Module Freezing & Unfreezing (`minigrad/nn/module.py`)
+- **New Feature:** Added recursive `freeze()` and `unfreeze()` methods to `Module`.
+- **Mechanism:** Traverses parameters across attributes, submodules, and module lists/tuples. `freeze()` toggles `requires_grad=False`, which automatically removes parameters from `model.parameters()` collection and stops gradient calculation in autograd. `unfreeze()` restores `requires_grad=True`.
+- **Chainability:** Returns `self` for fluent workflows such as `model.freeze().train()`.
+
+### 8.2 `LoRALinear` Layer (`minigrad/nn/lora.py`)
+- **Mathematical Formulation:** Decomposes weight updates into low-rank matrices:
+  $$h = x W_0 + \frac{\alpha}{r} x A B$$
+  where $W_0 \in \mathbb{R}^{d \times k}$ remains frozen, $A \in \mathbb{R}^{d \times r}$ is initialized with Kaiming-He scaling, and $B \in \mathbb{R}^{r \times k}$ is initialized with zeros so $\Delta W = 0$ at initialization.
+- **Batched & Sequence Support:** Matches `Linear`'s leading-dimension reshaping, seamlessly operating on 2D inputs $(B, D)$ or 3D sequence tokens $(B, T, D)$.
+- **Zero-Overhead Inference (`merge()`):** Provides an analytical merge method `lora.merge() -> Linear` combining $W_{merged} = W_0 + \frac{\alpha}{r} A B$, allowing fine-tuned models to deploy without latency penalty.
+
+### 8.3 Layer Injection (`apply_lora`)
+- **Utility:** Recursively scans a model hierarchy and selectively swaps matching `Linear` layers with `LoRALinear` wrappers while leaving remaining layers frozen.
+
+### 8.4 Verification Status
+- **Total Automated Unit Tests:** **78/78 passing (0 warnings)**.
+- **5 new tests added:**
+  - `test_module_freeze_unfreeze`: Verified parameter filtering and recursive state toggling.
+  - `test_lora_linear_forward`: Verified mathematical equivalence to base linear at initialization and proper gradient routing.
+  - `test_lora_linear_3d_input`: Sequence tensor shape preservation and gradient propagation.
+  - `test_apply_lora`: Selective module replacement across transformer blocks and parameter count reduction.
+  - `test_lora_merge`: Verified exact equivalence between LoRALinear dynamic forward and merged Linear weights.
+

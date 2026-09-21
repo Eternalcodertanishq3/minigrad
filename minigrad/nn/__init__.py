@@ -16,6 +16,7 @@ from minigrad.nn.batchnorm import BatchNorm1D, BatchNorm2D
 from minigrad.nn.embedding import Embedding
 from minigrad.nn.layernorm import LayerNorm
 from minigrad.nn.attention import MultiHeadAttention, TransformerBlock
+from minigrad.nn.lora import LoRALinear, apply_lora
 from minigrad.nn.dropout import Dropout, Dropout2D
 from minigrad.nn.flatten import Flatten
 from minigrad.nn.loss import MSELoss, CrossEntropyLoss, BCELoss, BCEWithLogitsLoss, NLLLoss
@@ -47,4 +48,6 @@ __all__ = [
     "LayerNorm",
     "MultiHeadAttention",
     "TransformerBlock",
+    "LoRALinear",
+    "apply_lora",
 ]

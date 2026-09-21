@@ -289,3 +289,146 @@ def test_transformer_block():
 
     # Residual connection: output shouldn't be identical to input
     assert not np.allclose(out.data, x.data)
+
+
+# ── Module Freezing & LoRA ──────────────────────────────────────────
+
+def test_module_freeze_unfreeze():
+    """freeze() should disable requires_grad, unfreeze() should re-enable."""
+    from minigrad.nn import Linear, Sequential
+
+    model = Sequential([Linear(4, 8), Linear(8, 2)])
+    params_before = model.parameters()
+    assert len(params_before) == 4  # 2 weights + 2 biases
+
+    # Freeze
+    model.freeze()
+    frozen_params = model.parameters()
+    assert len(frozen_params) == 0, "Frozen model should have 0 trainable params"
+
+    # Unfreeze
+    model.unfreeze()
+    unfrozen_params = model.parameters()
+    assert len(unfrozen_params) == 4, "Unfrozen model should have all params back"
+
+
+def test_lora_linear_forward():
+    """LoRALinear should produce same output as base Linear when B=0 (init)."""
+    from minigrad.nn import Linear
+    from minigrad.nn.lora import LoRALinear
+
+    np.random.seed(42)
+    base = Linear(16, 32)
+    x = Tensor(np.random.randn(2, 16), requires_grad=True)
+
+    # Get base output before wrapping
+    base_out = base(x).data.copy()
+
+    # Wrap with LoRA (B initialized to zeros → ΔW = 0)
+    lora = LoRALinear(base, rank=4, alpha=1.0)
+    lora_out = lora(x)
+
+    # At initialization, LoRA output should equal base output
+    assert np.allclose(lora_out.data, base_out, atol=1e-10), (
+        "LoRA output should match base output at initialization (B=0)"
+    )
+
+    # Only lora_A and lora_B should be trainable
+    trainable = lora.parameters()
+    assert len(trainable) == 2, f"Expected 2 trainable params (A, B), got {len(trainable)}"
+
+    # Verify gradients flow through LoRA path
+    loss = lora_out.sum()
+    loss.backward()
+    # At init B=0, so dL/dA = x.T @ (grad @ B.T) = 0 — mathematically correct.
+    # But dL/dB = (x @ A).T @ grad * scaling should be non-zero.
+    assert not np.all(lora.lora_B.grad == 0), "LoRA B should get gradients"
+    assert lora.lora_A.requires_grad is True
+
+
+def test_lora_linear_3d_input():
+    """LoRALinear should handle 3D (B, T, C) sequence inputs."""
+    from minigrad.nn import Linear
+    from minigrad.nn.lora import LoRALinear
+
+    np.random.seed(42)
+    base = Linear(16, 32)
+    lora = LoRALinear(base, rank=4)
+
+    x = Tensor(np.random.randn(2, 5, 16), requires_grad=True)
+    out = lora(x)
+
+    assert out.data.shape == (2, 5, 32), f"Expected (2, 5, 32), got {out.data.shape}"
+
+    loss = out.sum()
+    loss.backward()
+    assert x.grad.shape == (2, 5, 16)
+
+
+def test_apply_lora():
+    """apply_lora should replace targeted Linear layers with LoRALinear."""
+    from minigrad.nn.attention import TransformerBlock
+    from minigrad.nn.lora import LoRALinear, apply_lora
+
+    np.random.seed(42)
+    block = TransformerBlock(embed_dim=16, num_heads=4, dropout=0.0)
+
+    # Count params before
+    total_before = len(block.parameters())
+
+    # Freeze everything
+    block.freeze()
+    assert len(block.parameters()) == 0
+
+    # Apply LoRA to Q and V projections only
+    count = apply_lora(block, target_modules=["q_proj", "v_proj"], rank=2, alpha=1.0)
+    assert count == 2, f"Expected 2 replacements, got {count}"
+
+    # Verify q_proj and v_proj are now LoRALinear
+    assert isinstance(block.attn.q_proj, LoRALinear)
+    assert isinstance(block.attn.v_proj, LoRALinear)
+
+    # k_proj and out_proj should still be regular (frozen) Linear
+    from minigrad.nn import Linear
+    assert isinstance(block.attn.k_proj, Linear)
+    assert isinstance(block.attn.out_proj, Linear)
+
+    # Only LoRA params should be trainable (2 layers × (A + B) = 4 params)
+    trainable = block.parameters()
+    assert len(trainable) == 4, f"Expected 4 trainable LoRA params, got {len(trainable)}"
+
+    # Forward pass should still work
+    block.eval()
+    x = Tensor(np.random.randn(1, 4, 16), requires_grad=True)
+    out = block(x, causal=True)
+    assert out.data.shape == (1, 4, 16)
+
+
+def test_lora_merge():
+    """Merging LoRA should produce equivalent weights to base + A@B*scaling."""
+    from minigrad.nn import Linear
+    from minigrad.nn.lora import LoRALinear
+
+    np.random.seed(42)
+    base = Linear(8, 4, bias=True)
+    lora = LoRALinear(base, rank=2, alpha=2.0)
+
+    # Manually set A and B to non-zero for testing
+    lora.lora_A.data = np.random.randn(8, 2)
+    lora.lora_B.data = np.random.randn(2, 4)
+
+    # Get LoRA output
+    x = Tensor(np.random.randn(3, 8))
+    lora_out = lora(x).data.copy()
+
+    # Merge and compare
+    merged = lora.merge()
+    merged_out = merged(x).data
+
+    assert np.allclose(lora_out, merged_out, atol=1e-10), (
+        "Merged Linear should produce identical output to LoRALinear"
+    )
+
+    # Merged should be a plain Linear with all params trainable
+    assert isinstance(merged, Linear)
+    assert len(merged.parameters()) == 2  # weight + bias
