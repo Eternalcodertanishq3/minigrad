@@ -22,6 +22,7 @@ __version__ = "1.0.0"
 from minigrad.tensor import Tensor
 from minigrad.graph import topological_sort, trace, print_graph
 from minigrad.safetensors import save_file, load_file, safe_open
+from minigrad.autograd import grad, hessian
 
 __all__ = [
     "Tensor",
@@ -31,5 +32,7 @@ __all__ = [
     "save_file",
     "load_file",
     "safe_open",
+    "grad",
+    "hessian",
     "__version__",
 ]

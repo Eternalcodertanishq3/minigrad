@@ -29,7 +29,7 @@ class Tensor:
         _op: String name of the operation that created this tensor.
     """
 
-    __slots__ = ("data", "grad", "requires_grad", "_backward", "_prev", "_op")
+    __slots__ = ("data", "grad", "requires_grad", "_backward", "_prev", "_op", "_ctx")
 
     def __init__(
         self,
@@ -37,6 +37,7 @@ class Tensor:
         requires_grad: bool = False,
         _children: Tuple[Tensor, ...] = (),
         _op: str = "",
+        _ctx: Any = None,
     ) -> None:
         from minigrad.graph import is_grad_enabled
 
@@ -44,12 +45,13 @@ class Tensor:
         self.grad = np.zeros_like(self.data)
         if not is_grad_enabled():
             self.requires_grad = False
-            self._prev: Set[Tensor] = set()
+            self._prev: Tuple[Tensor, ...] = ()
         else:
             self.requires_grad = requires_grad
-            self._prev: Set[Tensor] = set(_children)
+            self._prev: Tuple[Tensor, ...] = tuple(_children)
         self._backward: Callable[[], None] = lambda: None
         self._op: str = _op
+        self._ctx: Any = _ctx
 
     # ------------------------------------------------------------------
     # Helper: ensure the other operand is a Tensor
@@ -137,6 +139,7 @@ class Tensor:
             requires_grad=self.requires_grad or (isinstance(other, Tensor) and other.requires_grad),
             _children=(self,) if not isinstance(other, Tensor) else (self, other),
             _op=f"pow^{other}",
+            _ctx=other,
         )
 
         def _backward() -> None:
@@ -246,6 +249,36 @@ class Tensor:
         out._backward = _backward
         return out
 
+    def sin(self) -> Tensor:
+        out = Tensor(
+            np.sin(self.data),
+            requires_grad=self.requires_grad,
+            _children=(self,),
+            _op="sin",
+        )
+
+        def _backward() -> None:
+            if self.requires_grad:
+                self.grad += np.cos(self.data) * out.grad
+
+        out._backward = _backward
+        return out
+
+    def cos(self) -> Tensor:
+        out = Tensor(
+            np.cos(self.data),
+            requires_grad=self.requires_grad,
+            _children=(self,),
+            _op="cos",
+        )
+
+        def _backward() -> None:
+            if self.requires_grad:
+                self.grad += -np.sin(self.data) * out.grad
+
+        out._backward = _backward
+        return out
+
     def gelu(self) -> Tensor:
         """GELU activation: x * Φ(x) where Φ is the standard normal CDF."""
         x = self.data
@@ -328,6 +361,7 @@ class Tensor:
             requires_grad=self.requires_grad,
             _children=(self,),
             _op="sum",
+            _ctx=(axes, keepdims, self.data.shape),
         )
 
         def _backward() -> None:
@@ -354,6 +388,7 @@ class Tensor:
             requires_grad=self.requires_grad,
             _children=(self,),
             _op="mean",
+            _ctx=(axes, keepdims, self.data.shape, n),
         )
 
         def _backward() -> None:
@@ -373,6 +408,7 @@ class Tensor:
             requires_grad=self.requires_grad,
             _children=(self,),
             _op="reshape",
+            _ctx=original_shape,
         )
 
         def _backward() -> None:
@@ -385,15 +421,15 @@ class Tensor:
     def transpose(self, *axes: int) -> Tensor:
         if not axes:
             axes = tuple(reversed(range(self.data.ndim)))
+        # Compute inverse permutation for backward
+        inverse_axes = tuple(axes.index(i) for i in range(len(axes)))
         out = Tensor(
             self.data.transpose(axes),
             requires_grad=self.requires_grad,
             _children=(self,),
             _op="transpose",
+            _ctx=(axes, inverse_axes),
         )
-
-        # Compute inverse permutation for backward
-        inverse_axes = tuple(axes.index(i) for i in range(len(axes)))
 
         def _backward() -> None:
             if self.requires_grad:
@@ -415,6 +451,7 @@ class Tensor:
             requires_grad=self.requires_grad,
             _children=(self,),
             _op="getitem",
+            _ctx=idx,
         )
 
         def _backward() -> None:
@@ -446,14 +483,44 @@ class Tensor:
     # Backward pass — topological sort + chain rule
     # ------------------------------------------------------------------
 
-    def backward(self) -> None:
+    def backward(self, create_graph: bool = False, retain_graph: bool = False) -> None:
         """
         Backpropagate gradients through the computation graph.
 
-        1. Topologically sort the graph (children before parents).
-        2. Seed the output gradient with 1s.
-        3. Visit each node in reverse topological order and call its _backward.
+        Args:
+            create_graph: If True, graph of the derivative will be constructed,
+                          allowing higher-order derivative products to be computed.
+            retain_graph: If False, the graph used to compute the grads will be freed.
         """
+        if create_graph:
+            from minigrad.autograd import grad
+
+            topo: List[Tensor] = []
+            visited: Set[int] = set()
+
+            def build_topo(node: Tensor) -> None:
+                if id(node) not in visited:
+                    visited.add(id(node))
+                    for child in node._prev:
+                        build_topo(child)
+                    topo.append(node)
+
+            build_topo(self)
+            leaf_nodes = [node for node in topo if not node._prev and node.requires_grad]
+            if not leaf_nodes:
+                return
+
+            grads = grad(self, leaf_nodes, create_graph=True, allow_unused=True)
+            for leaf, g in zip(leaf_nodes, grads):
+                if isinstance(leaf.grad, Tensor):
+                    leaf.grad = leaf.grad + g
+                elif isinstance(leaf.grad, np.ndarray) and np.all(leaf.grad == 0):
+                    leaf.grad = g
+                else:
+                    leaf.grad = Tensor(leaf.grad) + g
+            self.grad = Tensor(np.ones_like(self.data), requires_grad=create_graph)
+            return
+
         topo: List[Tensor] = []
         visited: Set[int] = set()
 

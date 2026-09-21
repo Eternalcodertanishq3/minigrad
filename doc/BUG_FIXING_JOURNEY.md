@@ -285,3 +285,48 @@ Following a full-repository audit, 7 architectural additions and minor edge case
   - `test_huggingface_official_safetensors_parity`: Two-way cross-testing with official `safetensors.numpy` library.
   - `test_bfloat16_loading`: Verified IEEE-754 bitcast decoding of BF16 representations.
 
+---
+
+## 10. Double Backward (`create_graph=True`) & Physics-Informed NNs (PINNs)
+
+### 10.1 Architectural Challenge: Differentiating Gradients
+- **The Bottleneck in First-Order Engines:** Standard reverse-mode autograd (e.g. Micrograd, older miniGrad) accumulates gradients directly as raw NumPy arrays (`self.grad += ...`). Because `.grad` is a `np.ndarray`, it is detached from the computation graph and cannot be differentiated further, preventing:
+  - Physics-Informed Neural Networks (PINNs) where the loss function includes differential operator residuals such as $\frac{\partial^2 u}{\partial x^2}$.
+  - Second-order optimization and curvature calculations (Hessians, Hessian-vector products).
+  - Gradient penalties (e.g. WGAN-GP $\left( \|\nabla_x D(x)\|_2 - 1 \right)^2$).
+  - Meta-learning (MAML) where gradient descent steps are differentiated.
+
+### 10.2 Tensor-Valued Vector-Jacobian Products (VJPs)
+- **Zero Performance Regression on Normal Workflows:**
+  - When `create_graph=False` (default in standard forward-backward training), the engine uses the fast NumPy array in-place accumulation pass.
+- **Differentiable Backward Graph (`create_graph=True`):**
+  - When `create_graph=True` or when calling `minigrad.autograd.grad(..., create_graph=True)`, the backward pass evaluates Vector-Jacobian Products using overloaded `Tensor` math operations.
+  - Gradient seeds $\bar{y}$ are instantiated as `Tensor(np.ones_like(y.data), requires_grad=create_graph)`.
+  - VJP expressions construct a new DAG whose output tensor `g` is itself differentiable.
+- **Ordered Parents & Context Tracking (`minigrad/tensor.py`):**
+  - Converted `Tensor._prev` from an unordered `set` to an ordered `tuple` of parents, preventing argument swapping in non-commutative operations (`matmul`, `div`, `pow`).
+  - Added `_ctx` attribute to `Tensor.__slots__` to carry forward reduction parameters (`axis`, `keepdims`, original shapes, permutation indices).
+  - Added trigonometric primitives `sin()` and `cos()` with autograd.
+
+### 10.3 Functional Autograd API (`minigrad/autograd.py`)
+- **`grad(outputs, inputs, grad_outputs=None, retain_graph=False, create_graph=False, allow_unused=False) -> tuple[Tensor, ...]`**:
+  - Full parity with PyTorch's `torch.autograd.grad`.
+  - Automatically handles scalar gradient seeding, batched gradient outputs, topological sorting, and multi-path gradient accumulation.
+- **`hessian(output, inputs, create_graph=False) -> Tensor`**:
+  - Computes the full $K \times K$ Hessian matrix using standard basis vector projections $\nabla f \cdot \mathbf{e}_i$.
+
+### 10.4 PINN Damped Harmonic Oscillator Example (`examples/07_pinn_harmonic_oscillator.py`)
+- Solves $\frac{d^2 u}{dt^2} + 2\zeta\omega_0 \frac{du}{dt} + \omega_0^2 u = 0$ with initial conditions $u(0)=1, u'(0)=0$.
+- Successfully computes spatial derivatives $u_t$ and $u_{tt}$ with `create_graph=True`, minimizes the PDE residual loss, and updates network weights via backpropagation without labeled supervision.
+
+### 10.5 Final Verification Status
+- **Total Automated Unit Tests:** **91/91 passing (0 warnings)**.
+- **7 new tests in `tests/test_double_backward.py`:**
+  - `test_scalar_polynomial_double_backward`: Verified $x^3 \to 3x^2 \to 6x$ and $x^4 \to 12x^2$.
+  - `test_trigonometric_double_backward`: Verified $\sin(x) \to \cos(x) \to -\sin(x)$ and $\cos(x) \to -\cos(x)$.
+  - `test_transcendental_double_backward`: Verified $\exp(x) \to \exp(x)$ and $\ln(x) \to -1/x^2$.
+  - `test_tanh_double_backward`: Verified analytical second derivative of $\tanh$.
+  - `test_hessian_quadratic_form`: Verified $\nabla^2 (0.5 x^T A x) \equiv A$.
+  - `test_tensor_backward_create_graph`: Validated `Tensor.backward(create_graph=True)` and second-order loss on `.grad`.
+  - `test_pinn_loss_backpropagation`: Validated full backpropagation from PDE residual $u_{xx} + u$ into neural network parameters.
+
