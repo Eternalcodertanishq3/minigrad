@@ -182,7 +182,46 @@ Following a full-repository audit, 7 architectural additions and minor edge case
 - **New Feature:** Implemented Einstein summation notation parsing and automatic backward gradient contraction for arbitrary tensor shapes.
 - **Trace Fix:** Handled scalar output trace contractions (`einsum('ii->', A)`) where repeated index labels exist, establishing analytical gradient $d(\text{trace}(A))/dA = \text{grad} \cdot I_N$.
 
-### Final Verification Status
+### Final Verification Status (Phase 2)
 - **Total Automated Unit Tests:** **69/69 passing (0 warnings)**.
 - **Code Coverage:** Full test coverage across all operations, graph skipping, layers, schedulers, and context managers.
+
+---
+
+## 7. Multi-Head Attention, Transformer & miniGPT
+
+### 7.1 `Linear` 3D Input Support (`minigrad/nn/linear.py`)
+- **Enhancement:** Upgraded `Linear.forward()` to handle arbitrary leading dimensions (e.g. `(B, T, C)` for sequence models).
+- **Mechanism:** When `x.data.ndim > 2`, internally reshape to `(B*T, C)`, run 2D matmul, reshape back to `(*leading_shape, out_features)`.
+- **Backward:** Autograd handles this transparently — `reshape` already has correct backward, and the chain composes correctly.
+- **Impact:** All existing 2D usage unchanged. Sequence models can now call `Linear` directly without manual reshape.
+
+### 7.2 `MultiHeadAttention` (`minigrad/nn/attention.py`)
+- **New Module:** `MultiHeadAttention(embed_dim, num_heads, dropout, bias)`.
+- **Architecture:**
+  - Three learned projections: `q_proj`, `k_proj`, `v_proj` (all `Linear(C, C)`).
+  - Head splitting via `reshape(B, T, H, D)` → `transpose(0, 2, 1, 3)` → `(B, H, T, D)`.
+  - Scaled dot-product attention using `einsum('bhqd,bhkd->bhqk', Q, K) / sqrt(d_k)`.
+  - Causal masking: `np.triu(ones, k=1) * -1e9` added to scores before softmax.
+  - Value aggregation: `einsum('bhqk,bhkd->bhqd', attn, V)`.
+  - Head concatenation + output projection `Linear(C, C)`.
+- **Key Design Decision:** Used `einsum` (not `@`) for all batched matmuls since `Tensor.__matmul__` only supports 2D. The `einsum` op already had full autograd from Phase 2 (Section 6.7), so this was zero extra work — a payoff from building the right primitives.
+
+### 7.3 `TransformerBlock` (`minigrad/nn/attention.py`)
+- **New Module:** `TransformerBlock(embed_dim, num_heads, ff_dim, dropout)`.
+- **Pre-norm (GPT-2 style):** `x = x + attn(LN(x))`, `x = x + ffn(LN(x))`.
+- **FFN:** `Linear(C, 4C)` → `GELU` → `Linear(4C, C)` → `Dropout`.
+- **Rationale for pre-norm:** More stable training than post-norm, especially for deeper stacks. GPT-2, GPT-3, LLaMA all use pre-norm.
+
+### 7.4 `miniGPT` Example (`examples/06_mini_gpt.py`)
+- **Architecture:** Token + Positional `Embedding` → 2× `TransformerBlock` (causal) → `LayerNorm` → `Linear` head.
+- **Training:** Character-level LM on inline Shakespeare (~1.6K chars). `AdamW` optimizer, `CrossEntropyLoss`.
+- **Generation:** Greedy autoregressive decoding inside `no_grad()` context.
+- **Hyperparams:** 64d, 4 heads, 2 layers, context=32 → ~50K params, trains on CPU.
+- **Validation:** Loss drops from ~3.7 → ~2.7 in 10 steps. Generated text shows learned character patterns.
+
+### 7.5 Verification
+- **73/73 unit tests passing (0 warnings)**
+- 4 new tests: `test_linear_3d_input`, `test_multihead_attention`, `test_multihead_attention_causal_mask`, `test_transformer_block`
+- End-to-end miniGPT smoke test: training loss decreases, gradients flow through all layers, generation produces coherent output.
 

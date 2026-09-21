@@ -180,3 +180,112 @@ def test_einsum_trace_autograd():
     # d(trace(A))/dA = eye(2)
     assert np.allclose(a.grad, np.eye(2))
 
+
+# ── Multi-Head Attention & Transformer ──────────────────────────────
+
+def test_linear_3d_input():
+    """Linear should handle (B, T, C) inputs by reshaping internally."""
+    from minigrad.nn import Linear
+
+    np.random.seed(42)
+    linear = Linear(16, 32)
+    x = Tensor(np.random.randn(2, 5, 16), requires_grad=True)
+    out = linear(x)
+
+    assert out.data.shape == (2, 5, 32), f"Expected (2, 5, 32), got {out.data.shape}"
+
+    # Verify gradient flows back
+    loss = out.sum()
+    loss.backward()
+    assert x.grad.shape == (2, 5, 16)
+    assert not np.all(x.grad == 0)
+
+
+def test_multihead_attention():
+    """MHA should produce correct output shape and flow gradients."""
+    from minigrad.nn.attention import MultiHeadAttention
+
+    np.random.seed(42)
+    B, T, C, H = 2, 4, 16, 4
+    mha = MultiHeadAttention(embed_dim=C, num_heads=H, dropout=0.0)
+    mha.eval()  # Disable dropout for deterministic test
+
+    x = Tensor(np.random.randn(B, T, C), requires_grad=True)
+    out = mha(x)
+
+    # Shape check
+    assert out.data.shape == (B, T, C), f"Expected ({B}, {T}, {C}), got {out.data.shape}"
+
+    # Gradient check
+    loss = out.sum()
+    loss.backward()
+    assert x.grad.shape == (B, T, C)
+    assert not np.all(x.grad == 0), "Gradients should flow through attention"
+
+    # Check all projection weights got gradients
+    for name, proj in [("q", mha.q_proj), ("k", mha.k_proj),
+                       ("v", mha.v_proj), ("out", mha.out_proj)]:
+        assert not np.all(proj.weight.grad == 0), f"{name}_proj weight grad is all zero"
+
+
+def test_multihead_attention_causal_mask():
+    """Causal mask should prevent attending to future positions."""
+    from minigrad.nn.attention import MultiHeadAttention
+    from minigrad.ops import softmax
+
+    np.random.seed(42)
+    B, T, C, H = 1, 4, 8, 2
+    mha = MultiHeadAttention(embed_dim=C, num_heads=H, dropout=0.0)
+    mha.eval()
+
+    x = Tensor(np.random.randn(B, T, C), requires_grad=True)
+
+    # Manually compute attention scores to verify masking
+    q = mha.q_proj(x).reshape(B, T, H, C // H).transpose(0, 2, 1, 3)
+    k = mha.k_proj(x).reshape(B, T, H, C // H).transpose(0, 2, 1, 3)
+
+    scale = 1.0 / math.sqrt(C // H)
+    from minigrad.ops import einsum
+    scores = einsum("bhqd,bhkd->bhqk", q, k) * scale
+
+    # Apply causal mask
+    mask = np.triu(np.ones((T, T)), k=1).astype(np.float64) * (-1e9)
+    masked_scores = scores + Tensor(mask)
+    attn_weights = softmax(masked_scores, axis=-1)
+
+    # Future positions should have ~0 attention weight
+    attn_data = attn_weights.data
+    for t in range(T):
+        for future in range(t + 1, T):
+            assert np.all(attn_data[0, :, t, future] < 1e-6), (
+                f"Position {t} attends to future position {future}"
+            )
+
+    # Full forward should also work with causal=True
+    out = mha(x, causal=True)
+    assert out.data.shape == (B, T, C)
+
+
+def test_transformer_block():
+    """TransformerBlock should preserve shape and propagate gradients."""
+    from minigrad.nn.attention import TransformerBlock
+
+    np.random.seed(42)
+    B, T, C, H = 2, 4, 16, 4
+    block = TransformerBlock(embed_dim=C, num_heads=H, dropout=0.0)
+    block.eval()
+
+    x = Tensor(np.random.randn(B, T, C), requires_grad=True)
+    out = block(x, causal=True)
+
+    # Shape preserved (residual connection)
+    assert out.data.shape == (B, T, C)
+
+    # Gradient flows
+    loss = out.sum()
+    loss.backward()
+    assert x.grad.shape == (B, T, C)
+    assert not np.all(x.grad == 0)
+
+    # Residual connection: output shouldn't be identical to input
+    assert not np.allclose(out.data, x.data)

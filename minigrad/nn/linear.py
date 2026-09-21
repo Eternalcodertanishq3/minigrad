@@ -3,6 +3,7 @@ linear.py — Fully connected (dense) layer.
 
 Computes: y = x @ W^T + b
 Uses Kaiming He initialization for weight stability in deep networks.
+Supports arbitrary leading dimensions (e.g. (B, T, C) for sequences).
 """
 from __future__ import annotations
 
@@ -52,10 +53,23 @@ class Linear(Module):
         Returns:
             Output tensor of shape (..., out_features)
         """
-        out = x @ self.weight  # (batch, in) @ (in, out) -> (batch, out)
+        # Handle arbitrary leading dimensions (e.g. (B, T, C) for sequences)
+        leading_shape = x.data.shape[:-1]
+        in_features = x.data.shape[-1]
+
+        if x.data.ndim > 2:
+            x_2d = x.reshape(-1, in_features)
+        else:
+            x_2d = x
+
+        out = x_2d @ self.weight  # (N, in) @ (in, out) -> (N, out)
 
         if self.bias is not None:
-            out = out + self.bias  # broadcasts over batch dimension
+            out = out + self.bias
+
+        # Restore leading dimensions
+        if x.data.ndim > 2:
+            out = out.reshape(*leading_shape, self.weight.data.shape[1])
 
         return out
 

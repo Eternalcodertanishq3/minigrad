@@ -15,6 +15,7 @@ from minigrad.nn.activations import ReLU, Sigmoid, Tanh, GELU, Softmax, LeakyReL
 from minigrad.nn.batchnorm import BatchNorm1D, BatchNorm2D
 from minigrad.nn.embedding import Embedding
 from minigrad.nn.layernorm import LayerNorm
+from minigrad.nn.attention import MultiHeadAttention, TransformerBlock
 from minigrad.nn.dropout import Dropout, Dropout2D
 from minigrad.nn.flatten import Flatten
 from minigrad.nn.loss import MSELoss, CrossEntropyLoss, BCELoss, BCEWithLogitsLoss, NLLLoss
@@ -44,4 +45,6 @@ __all__ = [
     "Sequential",
     "Embedding",
     "LayerNorm",
+    "MultiHeadAttention",
+    "TransformerBlock",
 ]
