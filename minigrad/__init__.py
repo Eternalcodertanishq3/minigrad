@@ -21,5 +21,15 @@ __version__ = "1.0.0"
 
 from minigrad.tensor import Tensor
 from minigrad.graph import topological_sort, trace, print_graph
+from minigrad.safetensors import save_file, load_file, safe_open
 
-__all__ = ["Tensor", "topological_sort", "trace", "print_graph", "__version__"]
+__all__ = [
+    "Tensor",
+    "topological_sort",
+    "trace",
+    "print_graph",
+    "save_file",
+    "load_file",
+    "safe_open",
+    "__version__",
+]

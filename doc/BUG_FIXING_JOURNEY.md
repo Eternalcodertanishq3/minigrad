@@ -253,3 +253,35 @@ Following a full-repository audit, 7 architectural additions and minor edge case
   - `test_apply_lora`: Selective module replacement across transformer blocks and parameter count reduction.
   - `test_lora_merge`: Verified exact equivalence between LoRALinear dynamic forward and merged Linear weights.
 
+---
+
+## 9. Hugging Face SafeTensors Reader & Writer
+
+### 9.1 Motivation & Specification
+- **Motivation:** Neural network serialization typically relies on Python's `pickle` or NumPy's `.npz`, which either presents arbitrary code execution security risks or lacks direct interoperability with Hugging Face model repositories.
+- **Binary Layout Parity:** Implemented pure-Python, zero-dependency SafeTensors format:
+  1. `8 bytes`: Little-endian unsigned 64-bit integer (`<Q`) representing JSON header length $N$.
+  2. `N bytes`: UTF-8 JSON header describing tensor shapes, string dtypes (`F64`, `F32`, `F16`, `BF16`, `I64`, `I32`, `I16`, `I8`, `U8`, `BOOL`), byte offset ranges `[start, end]`, and optional `__metadata__`.
+  3. **8-Byte Boundary Alignment:** Padded header with trailing spaces so data buffer starts aligned to 8 bytes, matching Hugging Face's canonical Rust implementation.
+  4. **Data Payload:** Raw contiguous byte buffer.
+
+### 9.2 Core API (`minigrad/safetensors.py`)
+- `save_file(tensors, filename, metadata=None)`: Serializes dictionary of `Tensor` or `np.ndarray` objects directly to `.safetensors`.
+- `load_file(filename, to_tensor=False, dtype=None)`: Loads tensors from `.safetensors`, with optional `to_tensor=True` (wrapping with autograd tape) and automatic dtype casting.
+- `_bf16_to_f32`: Bitwise conversion of bfloat16 bit patterns to IEEE-754 float32 via `(u16.astype(np.uint32) << 16).view(np.float32)`.
+- `safe_open(filename)`: Context manager for selective tensor inspection and zero-copy/low-memory header extraction.
+
+### 9.3 Module Integration (`minigrad/nn/module.py`)
+- Added `Module.save_safetensors(path, metadata=None)` and `Module.load_safetensors(path, strict=True)`.
+- Enables saving any miniGrad model directly to a `.safetensors` file that can be loaded in Hugging Face Transformers or PyTorch.
+
+### 9.4 Final Verification Status
+- **Total Automated Unit Tests:** **84/84 passing (0 warnings)**.
+- **6 new tests in `tests/test_safetensors.py`:**
+  - `test_roundtrip_basic`: Verified multi-type tensor serialization and deserialization.
+  - `test_metadata_preservation`: Verified `__metadata__` dictionary round-trip.
+  - `test_to_tensor_mode`: Validated autograd gradient computation on loaded tensors.
+  - `test_module_save_load_safetensors`: End-to-end model saving and weight reloading.
+  - `test_huggingface_official_safetensors_parity`: Two-way cross-testing with official `safetensors.numpy` library.
+  - `test_bfloat16_loading`: Verified IEEE-754 bitcast decoding of BF16 representations.
+

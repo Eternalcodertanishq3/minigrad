@@ -179,6 +179,17 @@ class Module:
         with np.load(path) as data:
             self.load_state_dict({key: data[key] for key in data.files}, strict=strict)
 
+    def save_safetensors(self, path: str | Path, metadata: Optional[dict[str, str]] = None) -> None:
+        """Save state_dict() to a Hugging Face .safetensors file."""
+        from minigrad.safetensors import save_file
+        save_file(self.state_dict(), path, metadata=metadata)
+
+    def load_safetensors(self, path: str | Path, strict: bool = True) -> None:
+        """Load a state dictionary from a Hugging Face .safetensors file."""
+        from minigrad.safetensors import load_file
+        tensors = load_file(path)
+        self.load_state_dict(tensors, strict=strict)
+
     def zero_grad(self) -> None:
         """Set gradients of all parameters to zero. Call before loss.backward()."""
         for p in self.parameters():
