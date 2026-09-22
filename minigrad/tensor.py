@@ -492,6 +492,14 @@ class Tensor:
                           allowing higher-order derivative products to be computed.
             retain_graph: If False, the graph used to compute the grads will be freed.
         """
+        from minigrad.glassbox import (
+            is_anomaly_detection_enabled,
+            diagnose_root_cause,
+            GradientAnomalyError,
+        )
+
+        anomaly_check = is_anomaly_detection_enabled()
+
         if create_graph:
             from minigrad.autograd import grad
 
@@ -533,12 +541,119 @@ class Tensor:
 
         build_topo(self)
 
+        if anomaly_check:
+            # Check 1: Forward pass NaN/Inf check if the loss itself is poisoned
+            if np.isnan(self.data).any() or np.isinf(self.data).any():
+                for node in topo:
+                    if np.isnan(node.data).any() or np.isinf(node.data).any():
+                        culprit_child = next(iter(node._prev), None)
+                        details = {
+                            "Culprit Node ID": f"#{id(node)}",
+                            "Operation": f"[{node._op}]",
+                            "Node Output Shape": str(node.data.shape),
+                            "Node Output Has NaN": str(bool(np.isnan(node.data).any())),
+                            "Node Output Has Inf": str(bool(np.isinf(node.data).any())),
+                        }
+                        if culprit_child is not None:
+                            details["Input Tensor Shape"] = str(culprit_child.data.shape)
+                            details["Input Data Range"] = (
+                                f"min={np.min(culprit_child.data):.6e}, max={np.max(culprit_child.data):.6e}"
+                                if culprit_child.data.size > 0 else "empty"
+                            )
+                            if node._op == "log":
+                                non_pos = int(np.sum(culprit_child.data <= 0))
+                                min_val = float(np.min(culprit_child.data)) if culprit_child.data.size > 0 else 0.0
+                                reason = (
+                                    f"Logarithm forward pass evaluated on non-positive input ({non_pos} elements <= 0, "
+                                    f"min value: {min_val:.6e}). Produced NaN in forward pass."
+                                )
+                            else:
+                                reason = f"Operation [{node._op}] produced NaN/Inf output during forward evaluation."
+                        else:
+                            reason = f"Node [{node._op}] produced NaN/Inf output during forward evaluation."
+
+                        raise GradientAnomalyError(
+                            node_id=id(node),
+                            op=node._op or "forward_node",
+                            reason=reason,
+                            details=details,
+                        )
+
         # Seed: dL/dL = 1
         self.grad = np.ones_like(self.data)
 
         # Reverse topological order: apply chain rule
         for node in reversed(topo):
-            node._backward()
+            if anomaly_check:
+                prev_grads = {
+                    id(child): (
+                        child.grad.copy()
+                        if isinstance(child.grad, np.ndarray)
+                        else (child.grad.data.copy() if child.grad is not None else None)
+                    )
+                    for child in node._prev
+                }
+
+                node._backward()
+
+                for child in node._prev:
+                    curr_g = child.grad if isinstance(child.grad, np.ndarray) else (child.grad.data if child.grad is not None else None)
+                    if curr_g is None:
+                        continue
+                    old_g = prev_grads.get(id(child))
+                    old_has_nan = np.isnan(old_g).any() if old_g is not None else False
+                    old_has_inf = np.isinf(old_g).any() if old_g is not None else False
+
+                    new_has_nan = np.isnan(curr_g).any()
+                    new_has_inf = np.isinf(curr_g).any()
+
+                    if (new_has_nan and not old_has_nan) or (new_has_inf and not old_has_inf):
+                        reason = diagnose_root_cause(
+                            node,
+                            child,
+                            old_g if old_g is not None else np.zeros_like(curr_g),
+                        )
+                        if new_has_nan and not old_has_nan:
+                            nan_coords = np.argwhere(np.isnan(curr_g))
+                            first_coord = tuple(int(x) for x in nan_coords[0]) if len(nan_coords) > 0 else ()
+                        else:
+                            inf_coords = np.argwhere(np.isinf(curr_g))
+                            first_coord = tuple(int(x) for x in inf_coords[0]) if len(inf_coords) > 0 else ()
+
+                        details = {
+                            "Affected Child Node ID": f"#{id(child)}",
+                            "Child Tensor Shape": str(child.data.shape),
+                            "First Poisoned Coordinate": str(first_coord),
+                            "Child Data Range": (
+                                f"min={np.min(child.data):.6e}, max={np.max(child.data):.6e}"
+                                if child.data.size > 0 else "empty"
+                            ),
+                            "Parent Op Node": f"[{node._op}] with context={getattr(node, '_ctx', None)}",
+                        }
+                        raise GradientAnomalyError(
+                            node_id=id(node),
+                            op=node._op or "unknown",
+                            reason=reason,
+                            details=details,
+                        )
+            else:
+                node._backward()
+
+    def explain(self) -> str:
+        """
+        Generate a structured ASCII telemetry report of gradient flow across all nodes
+        in the computation graph rooted at this tensor.
+        """
+        from minigrad.glassbox import explain_gradients
+        return explain_gradients(self)
+
+    def visualize(self, filename: Optional[Union[str, Any]] = "computational_graph.html") -> str:
+        """
+        Generate a zero-dependency interactive standalone HTML/SVG visualization
+        of the computation graph rooted at this tensor, with live gradient health telemetry.
+        """
+        from minigrad.glassbox import visualize
+        return visualize(self, filename=filename)
 
     # ------------------------------------------------------------------
     # Utility

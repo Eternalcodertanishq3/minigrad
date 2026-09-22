@@ -330,3 +330,57 @@ Following a full-repository audit, 7 architectural additions and minor edge case
   - `test_tensor_backward_create_graph`: Validated `Tensor.backward(create_graph=True)` and second-order loss on `.grad`.
   - `test_pinn_loss_backpropagation`: Validated full backpropagation from PDE residual $u_{xx} + u$ into neural network parameters.
 
+---
+
+## 11. Pillar 1: "Glass-Box" Autograd & First-NaN Root-Cause Telemetry
+
+### 11.1 The Industry Pain Point: The "Black Box" of Backpropagation
+In industrial deep learning, one of the most frustrating failures occurs when an overnight training run prints:
+```text
+Step 412: Loss = 0.4321
+Step 413: Loss = nan
+```
+In PyTorch and TensorFlow, backpropagation executes inside compiled C++ / CUDA kernels. Once a gradient vector is poisoned by `NaN` or `Inf`, the numerical poison propagates through the entire computational graph in milliseconds. By the time the user examines `.grad`, every parameter in every layer is `NaN`. Identifying whether the root cause was an unnormalized activation, a divide-by-zero, an exponential overflow, or an exponent singularity at zero base requires tedious manual instrumentation.
+
+### 11.2 miniGrad Innovation: Real-Time First-NaN & Inf Localization
+miniGrad introduces real-time anomaly trapping via `minigrad.detect_anomaly()`:
+- **Instant Culprit Trapping:** During reverse-mode topological execution, `Tensor.backward()` compares parent and child gradient buffers before and after each node's `_backward()` closure runs.
+- **First Transition Detection:** The very first operation that turns a finite gradient into `NaN` or `Inf` immediately aborts execution and raises `GradientAnomalyError`.
+- **Root-Cause Mathematical Diagnosis:** miniGrad analyzes the parent operation context, child tensor values, and operation type (`pow`, `log`, `div`, `exp`) to diagnose the mathematical singularity (e.g. power rule singularity $0.5 \cdot 0^{-0.5}$, logarithm evaluated on non-positive elements, or division by zero denominator).
+- **Coordinate Telemetry:** Pinpoints the exact tensor coordinates (e.g. index `(0,)`), child tensor min/max range, and node IDs.
+
+### 11.3 Gradient Health Telemetry & Structured Reporting
+miniGrad provides full-graph gradient telemetry via `minigrad.explain_gradients(root)` (or `loss.explain()`):
+- **Metrics Collected per Node (`NodeTelemetry`):**
+  - Gradient $L_2$ norm ($\|\nabla\|_2$).
+  - Dynamic range (minimum and maximum gradient values).
+  - Dead / zero neuron percentage ($\frac{\text{zero elements}}{\text{total elements}} \times 100\%$).
+  - Health status classification:
+    - `[OK] Healthy`: Finite norm between $10^{-6}$ and $10^3$.
+    - `[!] Vanishing`: Finite norm $< 10^{-6}$.
+    - `[!] Exploding`: Finite norm $> 1000$.
+    - `[X] Poisoned`: Contains `NaN` or `Inf`.
+    - `[--] No Grad`: Inactive / non-differentiable tensors.
+- **Structured ASCII Table:** Emits a clean, terminal-safe table formatted for all operating systems (Windows cp1252, Linux, macOS).
+
+### 11.4 Zero-Dependency Interactive Standalone Visual DAG
+miniGrad includes an in-house interactive graph visualizer via `minigrad.visualize(root, filename)` (or `loss.visualize()`):
+- **Zero External Toolchain Dependencies:** Requires **no Graphviz binary** installation and **no internet connection / CDN scripts**. Generates 100% pure HTML, CSS, and SVG.
+- **Hierarchical Layer Placement:** Assigns topological ranks from inputs (rank 0) to loss (root), computing symmetric $X/Y$ coordinates.
+- **Smooth Cubic Bezier Splines:** Connects parents and children with curved SVG paths color-coded by gradient health (Emerald Green for healthy, Amber for vanishing, Crimson for exploding, Purple for poisoned).
+- **Interactive Features:** Includes smooth mouse drag-pan, scroll-wheel zoom, reset controls, and a click inspector sidebar displaying exact tensor shapes, norms, and sample values.
+
+### 11.5 Final Verification Status
+- **Total Automated Unit Tests:** **99/99 passing (0 warnings)**.
+- **8 new tests in `tests/test_glassbox.py`:**
+  - `test_detect_anomaly_context_manager_state`: Context manager state lifecycle and nested context cleanup.
+  - `test_detect_anomaly_traps_backward_inf_singularity`: Traps power rule explosion $0.5 \cdot 0^{-0.5} \to \infty$.
+  - `test_detect_anomaly_traps_forward_nan_poisoning`: Traps logarithm evaluated on non-positive input.
+  - `test_gradient_telemetry_health_statuses`: Validates healthy, vanishing, exploding, and inactive classifications.
+  - `test_dead_neuron_percentage`: Verifies zero gradient percentage calculation on inactive ReLU neurons.
+  - `test_explain_gradients_table_format`: Validates table structure and `Tensor.explain()` convenience method.
+  - `test_visualize_html_generation`: Validates standalone HTML/SVG generation and pan/zoom/inspector scaffolding.
+  - `test_poisoned_gradient_report_summary`: Validates root cause summary section for poisoned graphs.
+- **Runnable Demo:** `examples/08_glassbox_debugging.py` demonstrating healthy telemetry, HTML graph export, and anomaly trapping.
+
+

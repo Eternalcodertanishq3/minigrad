@@ -23,6 +23,14 @@ from minigrad.tensor import Tensor
 from minigrad.graph import topological_sort, trace, print_graph
 from minigrad.safetensors import save_file, load_file, safe_open
 from minigrad.autograd import grad, hessian
+from minigrad.glassbox import (
+    detect_anomaly,
+    explain_gradients,
+    visualize,
+    collect_telemetry,
+    GradientAnomalyError,
+    NodeTelemetry,
+)
 
 __all__ = [
     "Tensor",
@@ -34,5 +42,11 @@ __all__ = [
     "safe_open",
     "grad",
     "hessian",
+    "detect_anomaly",
+    "explain_gradients",
+    "visualize",
+    "collect_telemetry",
+    "GradientAnomalyError",
+    "NodeTelemetry",
     "__version__",
 ]
