@@ -655,12 +655,40 @@ class Tensor:
         from minigrad.glassbox import visualize
         return visualize(self, filename=filename)
 
+    def optimize_graph(
+        self,
+        max_passes: int = 5,
+        enable_constant_folding: bool = True,
+        enable_algebraic: bool = True,
+        enable_fusion: bool = True,
+    ) -> Tuple[Tensor, Any]:
+        """
+        Run symbolic optimizations and algebraic simplifications on the DAG rooted at this tensor.
+        Returns a tuple of (optimized_tensor, OptimizationReport).
+        """
+        from minigrad.graph_opt import optimize_graph
+        return optimize_graph(
+            self,
+            max_passes=max_passes,
+            enable_constant_folding=enable_constant_folding,
+            enable_algebraic=enable_algebraic,
+            enable_fusion=enable_fusion,
+        )
+
+    def optimize(self) -> Tensor:
+        """
+        Convenience method: optimize computational graph and return the optimized root tensor.
+        """
+        from minigrad.graph_opt import optimize
+        return optimize(self)
+
     def export_c(
         self,
         example_input: Optional[Union[Tensor, Tuple[Tensor, ...]]] = None,
         filename: Optional[Union[str, Any]] = None,
         include_main: bool = True,
         model_name: str = "model",
+        optimize: bool = True,
     ) -> str:
         """
         Compile the computation graph rooted at this tensor into standalone ANSI C
@@ -673,6 +701,7 @@ class Tensor:
             filename=filename,
             include_main=include_main,
             model_name=model_name,
+            optimize=optimize,
         )
 
     def to_c(
@@ -681,6 +710,7 @@ class Tensor:
         filename: Optional[Union[str, Any]] = None,
         include_main: bool = True,
         model_name: str = "model",
+        optimize: bool = True,
     ) -> str:
         """Alias for export_c()."""
         return self.export_c(
@@ -688,6 +718,7 @@ class Tensor:
             filename=filename,
             include_main=include_main,
             model_name=model_name,
+            optimize=optimize,
         )
 
     # ------------------------------------------------------------------

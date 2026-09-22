@@ -26,6 +26,30 @@ from minigrad.graph import topological_sort
 # ── ANSI C Kernel Library ──────────────────────────────────────────
 
 KERNEL_DEFINITIONS: Dict[str, str] = {
+    "fused_linear": """static inline void minigrad_fused_linear(const float* A, const float* B, const float* bias, float* out, int M, int K, int N) {
+    for (int i = 0; i < M; i++) {
+        for (int j = 0; j < N; j++) {
+            float sum = bias ? bias[j] : 0.0f;
+            for (int k = 0; k < K; k++) {
+                sum += A[i * K + k] * B[k * N + j];
+            }
+            out[i * N + j] = sum;
+        }
+    }
+}""",
+
+    "fused_linear_relu": """static inline void minigrad_fused_linear_relu(const float* A, const float* B, const float* bias, float* out, int M, int K, int N) {
+    for (int i = 0; i < M; i++) {
+        for (int j = 0; j < N; j++) {
+            float sum = bias ? bias[j] : 0.0f;
+            for (int k = 0; k < K; k++) {
+                sum += A[i * K + k] * B[k * N + j];
+            }
+            out[i * N + j] = sum > 0.0f ? sum : 0.0f;
+        }
+    }
+}""",
+
     "matmul_2d": """static inline void minigrad_matmul_2d(const float* A, const float* B, float* out, int M, int K, int N) {
     for (int i = 0; i < M; i++) {
         for (int j = 0; j < N; j++) {
@@ -230,9 +254,11 @@ class CCompiler:
         example_input: Optional[Union[Tensor, Tuple[Tensor, ...]]] = None,
         model_name: str = "model",
         include_main: bool = True,
+        optimize: bool = True,
     ) -> None:
         self.model_name = model_name
         self.include_main = include_main
+        self.optimize = optimize
 
         # 1. Resolve forward output and parameter set
         if hasattr(model_or_output, "parameters") and callable(model_or_output):
@@ -255,6 +281,10 @@ class CCompiler:
                 self.example_input = ()
         else:
             raise TypeError(f"Expected Module or Tensor, got {type(model_or_output)}")
+
+        if self.optimize:
+            from minigrad.graph_opt import optimize as opt_graph
+            self.output = opt_graph(self.output)
 
         self.topo = topological_sort(self.output)
         self.node_names: Dict[int, str] = {}
@@ -487,6 +517,26 @@ class CCompiler:
                 self.used_kernels.add("mean")
                 self.c_instructions.append(f"    minigrad_mean({in0}, {out_var}, {in0_node.data.size});")
 
+            elif op == "fused_linear":
+                self.used_kernels.add("fused_linear")
+                bias_var = self.node_names[id(parents[2])] if len(parents) > 2 and parents[2] is not None else "NULL"
+                m = int(np.prod(parents[0].data.shape[:-1])) if parents[0].data.ndim > 1 else 1
+                k = parents[1].data.shape[0]
+                n = parents[1].data.shape[1]
+                self.c_instructions.append(
+                    f"    minigrad_fused_linear({in0}, {in1}, {bias_var}, {out_var}, {m}, {k}, {n});"
+                )
+
+            elif op == "fused_linear_relu":
+                self.used_kernels.add("fused_linear_relu")
+                bias_var = self.node_names[id(parents[2])] if len(parents) > 2 and parents[2] is not None else "NULL"
+                m = int(np.prod(parents[0].data.shape[:-1])) if parents[0].data.ndim > 1 else 1
+                k = parents[1].data.shape[0]
+                n = parents[1].data.shape[1]
+                self.c_instructions.append(
+                    f"    minigrad_fused_linear_relu({in0}, {in1}, {bias_var}, {out_var}, {m}, {k}, {n});"
+                )
+
             else:
                 # Fallback for unrecognized intermediate ops: copy
                 self.used_kernels.add("copy")
@@ -626,6 +676,7 @@ def export_c(
     filename: Optional[Union[str, Path]] = None,
     include_main: bool = True,
     model_name: str = "model",
+    optimize: bool = True,
 ) -> str:
     """
     Compile a miniGrad model or computational graph into a single standalone ANSI C file.
@@ -638,6 +689,8 @@ def export_c(
         filename:        Optional destination .c file path.
         include_main:    If True, includes a runnable main() test harness.
         model_name:      Identifier prefix for functions and static buffers.
+        optimize:        If True, runs symbolic graph optimizations (algebraic simplification,
+                         constant folding, and operator fusion) before emitting C code.
 
     Returns:
         The generated C source code string.
@@ -647,6 +700,7 @@ def export_c(
         example_input=example_input,
         model_name=model_name,
         include_main=include_main,
+        optimize=optimize,
     )
     code = compiler.compile()
 
@@ -665,6 +719,7 @@ def to_c(
     filename: Optional[Union[str, Path]] = None,
     include_main: bool = True,
     model_name: str = "model",
+    optimize: bool = True,
 ) -> str:
     """Alias for export_c()."""
     return export_c(
@@ -673,4 +728,5 @@ def to_c(
         filename=filename,
         include_main=include_main,
         model_name=model_name,
+        optimize=optimize,
     )

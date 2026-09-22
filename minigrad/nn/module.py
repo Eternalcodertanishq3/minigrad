@@ -10,7 +10,7 @@ Every layer in miniGrad.nn inherits from Module. It provides:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterator, List
+from typing import Any, Iterator, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -268,12 +268,36 @@ class Module:
                         submodule_prefix = prefix + ("." if prefix else "") + f"{name}[{i}]"
                         yield from item.named_modules(submodule_prefix)
 
+    def optimize(
+        self,
+        example_input: Any,
+        max_passes: int = 5,
+        enable_constant_folding: bool = True,
+        enable_algebraic: bool = True,
+        enable_fusion: bool = True,
+    ) -> Tuple[Tensor, Any]:
+        """
+        Run forward pass on example_input and symbolically optimize the resulting computation graph.
+        Returns a tuple of (optimized_output_tensor, OptimizationReport).
+        """
+        from minigrad.graph_opt import optimize_graph
+        inps = example_input if isinstance(example_input, (tuple, list)) else (example_input,)
+        out = self(*inps)
+        return optimize_graph(
+            out,
+            max_passes=max_passes,
+            enable_constant_folding=enable_constant_folding,
+            enable_algebraic=enable_algebraic,
+            enable_fusion=enable_fusion,
+        )
+
     def export_c(
         self,
         example_input: Any,
         filename: Optional[Union[str, Any]] = None,
         include_main: bool = True,
         model_name: str = "model",
+        optimize: bool = True,
     ) -> str:
         """
         Compile this module into standalone ANSI C with zero runtime dependencies
@@ -286,6 +310,7 @@ class Module:
             filename=filename,
             include_main=include_main,
             model_name=model_name,
+            optimize=optimize,
         )
 
     def to_c(
@@ -294,6 +319,7 @@ class Module:
         filename: Optional[Union[str, Any]] = None,
         include_main: bool = True,
         model_name: str = "model",
+        optimize: bool = True,
     ) -> str:
         """Alias for export_c()."""
         return self.export_c(
@@ -301,6 +327,7 @@ class Module:
             filename=filename,
             include_main=include_main,
             model_name=model_name,
+            optimize=optimize,
         )
 
     def __repr__(self) -> str:

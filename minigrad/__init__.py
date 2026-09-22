@@ -32,6 +32,7 @@ from minigrad.glassbox import (
     NodeTelemetry,
 )
 from minigrad.compiler import export_c, to_c
+from minigrad.graph_opt import optimize, optimize_graph, OptimizationReport
 
 __all__ = [
     "Tensor",
@@ -51,5 +52,8 @@ __all__ = [
     "NodeTelemetry",
     "export_c",
     "to_c",
+    "optimize",
+    "optimize_graph",
+    "OptimizationReport",
     "__version__",
 ]

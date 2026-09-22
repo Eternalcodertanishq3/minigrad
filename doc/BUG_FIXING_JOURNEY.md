@@ -426,5 +426,58 @@ The compiler analyzes the topological DAG and selectively emits inlined, minimal
   - `test_c_export_layernorm`: Validated compiled LayerNorm normalization.
 - **Runnable Demo:** `examples/09_embedded_c_export.py` demonstrating XOR model training in Python, one-click C export, native clang compilation, and microsecond verification.
 
+---
+
+## 13. Pillar 3: Symbolic Graph Optimization & Algebraic Fusion Engine (`minigrad.graph_opt`)
+
+### 13.1 The Industry Pain Point: Opaque Compilation & Broken Autograd Equivalence
+In industry frameworks like PyTorch 2.0 (`torch.compile`), graph optimization relies on TorchDynamo—a 500,000-line Python frame evaluation bytecode interceptor, and TorchInductor, an opaque C++/Triton code generator:
+- **Opacity & Indirection:** When `torch.compile` fails, users are confronted with cryptic internal graph tracing errors (`GuardFailed`, `UnsupportedBytecode`).
+- **Autograd Fragility:** In dynamic frameworks, graph rewrite passes frequently break autograd backward closures or inadvertently discard leaf parameters, causing silent gradient corruption or zeroed updates.
+- **Single-Framework Lock-in:** PyTorch's compiler outputs cannot be decoupled from libtorch or Python runtimes.
+
+### 13.2 miniGrad Innovation: Direct Symbolic DAG Rewriting with Bit-for-Bit Autograd Equivalence
+miniGrad operates directly on its explicit, transparent computational DAG:
+- **Algebraic Identity Elimination:**
+  - $x + 0 \to x$, $0 + x \to x$
+  - $x \times 1 \to x$, $1 \times x \to x$
+  - $x - 0 \to x$
+  - $x / 1 \to x$
+  - $x \times 0 \to 0$ (when non-trainable)
+  - $-(-x) \to x$
+  - $x^1 \to x$
+  - $\ln(\exp(x)) \to x$, $\exp(\ln(x)) \to x$
+  - Redundant and chained `reshape` collapsing.
+  - Chained scalar addition and multiplication folding ($(x \cdot c_1) \cdot c_2 \to x \cdot (c_1 c_2)$).
+- **Trainable Parameter Protection Guard:**
+  Algebraic simplifications strictly guard against pruning operands where `requires_grad=True`. For example, a trainable bias initialized to $0.0$ or a scale initialized to $1.0$ is preserved so backpropagation updates it correctly.
+- **Constant Folding:**
+  Subgraphs consisting entirely of non-trainable constants (`requires_grad=False`) are pre-evaluated at compile time and collapsed into precomputed leaf nodes, saving runtime compute and memory.
+- **Kernel Fusion Engine:**
+  - `fused_linear(x, weight, bias)`: Fuses MatMul + Bias into a single combined kernel.
+  - `fused_linear_relu(x, weight, bias)`: Fuses MatMul + Bias + ReLU into a single activation kernel, avoiding intermediate buffer allocations.
+  - **Multi-Consumer Guard:** If an intermediate activation has $>1$ consumers, it is preserved rather than fused to avoid redundant recomputations.
+- **Bit-for-Bit Autograd Equivalence:**
+  The functional dispatch rebuilder (`_rebuild_node`) dynamically generates fresh `_backward` closures directly bound to the new parent tensors. Verified mathematically across deep MLPs: maximum gradient difference between unoptimized baseline and optimized fused graph is exactly $0.00 \times 10^0$.
+- **Synergy with Embedded C Compiler:**
+  `export_c(..., optimize=True)` seamlessly emits fused C kernels (`minigrad_fused_linear_relu` and `minigrad_fused_linear`), providing zero-overhead, highly-optimized embedded C inference code.
+
+### 13.3 Final Verification Status
+- **Total Automated Unit Tests:** **116/116 passing (0 warnings)**.
+- **12 new tests in `tests/test_graph_opt.py`:**
+  - `test_algebraic_identities_elimination`: Verified pruning of $+0, \times 1, -0, /1, \text{pow}^1$.
+  - `test_double_negation_elimination`: Verified $-(-x) \to x$.
+  - `test_log_exp_elimination`: Verified $\ln(\exp(x)) \to x$.
+  - `test_redundant_reshape_elimination`: Verified shape pruning and chained reshape collapsing.
+  - `test_trainable_identity_operand_not_eliminated`: Guaranteed trainable parameters are never pruned.
+  - `test_constant_folding`: Verified precomputation of non-trainable subgraphs.
+  - `test_kernel_fusion_linear_and_relu`: Verified fusion to `fused_linear` and `fused_linear_relu`.
+  - `test_multi_consumer_fusion_guard`: Verified single-consumer fusion invariants.
+  - `test_autograd_gradient_parity_exact`: Verified 100% bit-for-bit gradient parity against unoptimized baseline on 3-layer MLP.
+  - `test_tensor_optimize_api`: Verified `Tensor.optimize()` and `Tensor.optimize_graph()`.
+  - `test_module_optimize_api`: Verified `Module.optimize(example_input)`.
+  - `test_compiler_synergy_with_optimization`: Verified `export_c(..., optimize=True)` emits fused C kernels.
+- **Runnable Demo:** `examples/10_graph_optimization.py` demonstrating graph pruning, constant folding, ASCII optimization report, bit-for-bit autograd verification, and C compiler synergy.
+
 
 
