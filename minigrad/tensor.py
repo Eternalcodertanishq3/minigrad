@@ -655,6 +655,41 @@ class Tensor:
         from minigrad.glassbox import visualize
         return visualize(self, filename=filename)
 
+    def export_c(
+        self,
+        example_input: Optional[Union[Tensor, Tuple[Tensor, ...]]] = None,
+        filename: Optional[Union[str, Any]] = None,
+        include_main: bool = True,
+        model_name: str = "model",
+    ) -> str:
+        """
+        Compile the computation graph rooted at this tensor into standalone ANSI C
+        with zero runtime dependencies and zero dynamic memory allocations (malloc/free).
+        """
+        from minigrad.compiler import export_c
+        return export_c(
+            self,
+            example_input=example_input,
+            filename=filename,
+            include_main=include_main,
+            model_name=model_name,
+        )
+
+    def to_c(
+        self,
+        example_input: Optional[Union[Tensor, Tuple[Tensor, ...]]] = None,
+        filename: Optional[Union[str, Any]] = None,
+        include_main: bool = True,
+        model_name: str = "model",
+    ) -> str:
+        """Alias for export_c()."""
+        return self.export_c(
+            example_input=example_input,
+            filename=filename,
+            include_main=include_main,
+            model_name=model_name,
+        )
+
     # ------------------------------------------------------------------
     # Utility
     # ------------------------------------------------------------------

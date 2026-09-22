@@ -268,6 +268,41 @@ class Module:
                         submodule_prefix = prefix + ("." if prefix else "") + f"{name}[{i}]"
                         yield from item.named_modules(submodule_prefix)
 
+    def export_c(
+        self,
+        example_input: Any,
+        filename: Optional[Union[str, Any]] = None,
+        include_main: bool = True,
+        model_name: str = "model",
+    ) -> str:
+        """
+        Compile this module into standalone ANSI C with zero runtime dependencies
+        and zero dynamic memory allocations (malloc/free).
+        """
+        from minigrad.compiler import export_c
+        return export_c(
+            self,
+            example_input=example_input,
+            filename=filename,
+            include_main=include_main,
+            model_name=model_name,
+        )
+
+    def to_c(
+        self,
+        example_input: Any,
+        filename: Optional[Union[str, Any]] = None,
+        include_main: bool = True,
+        model_name: str = "model",
+    ) -> str:
+        """Alias for export_c()."""
+        return self.export_c(
+            example_input=example_input,
+            filename=filename,
+            include_main=include_main,
+            model_name=model_name,
+        )
+
     def __repr__(self) -> str:
         return f"{type(self).__name__}()"
 

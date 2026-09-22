@@ -152,3 +152,7 @@ cython_debug/
 
 # Visual DAG exports
 *.html
+
+# Compiled binaries
+*.exe
+*.bin

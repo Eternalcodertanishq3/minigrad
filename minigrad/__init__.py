@@ -31,6 +31,7 @@ from minigrad.glassbox import (
     GradientAnomalyError,
     NodeTelemetry,
 )
+from minigrad.compiler import export_c, to_c
 
 __all__ = [
     "Tensor",
@@ -48,5 +49,7 @@ __all__ = [
     "collect_telemetry",
     "GradientAnomalyError",
     "NodeTelemetry",
+    "export_c",
+    "to_c",
     "__version__",
 ]
