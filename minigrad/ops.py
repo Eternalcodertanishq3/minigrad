@@ -189,7 +189,7 @@ def stack(tensors: list, axis: int = 0) -> Tensor:
     """Stack a list of tensors along a new axis."""
     data = np.stack([t.data for t in tensors], axis=axis)
     out = Tensor(data, requires_grad=any(t.requires_grad for t in tensors),
-                 _children=tuple(tensors), _op="stack")
+                 _children=tuple(tensors), _op="stack", _ctx=axis)
 
     def _backward() -> None:
         for i, t in enumerate(tensors):
@@ -206,7 +206,7 @@ def concat(tensors: list, axis: int = 0) -> Tensor:
     """Concatenate tensors along an existing axis."""
     data = np.concatenate([t.data for t in tensors], axis=axis)
     out = Tensor(data, requires_grad=any(t.requires_grad for t in tensors),
-                 _children=tuple(tensors), _op="concat")
+                 _children=tuple(tensors), _op="concat", _ctx=axis)
 
     def _backward() -> None:
         offset = 0

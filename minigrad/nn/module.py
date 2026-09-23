@@ -330,6 +330,27 @@ class Module:
             optimize=optimize,
         )
 
+    def make_functional(
+        self,
+        return_dict: bool = True,
+    ) -> Tuple[Any, Any]:
+        """
+        Convert this Module into a pure stateless callable and extracted parameters.
+        """
+        from minigrad.vmap import make_functional
+        return make_functional(self, return_dict=return_dict)
+
+    def per_sample_gradients(
+        self,
+        loss_fn: Any,
+        *batched_inputs: Any,
+    ) -> Any:
+        """
+        Compute per-sample gradients [B, *shape] for all parameters in this module.
+        """
+        from minigrad.vmap import per_sample_gradients
+        return per_sample_gradients(self, loss_fn, None, *batched_inputs)
+
     def __repr__(self) -> str:
         return f"{type(self).__name__}()"
 

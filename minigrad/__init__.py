@@ -33,6 +33,20 @@ from minigrad.glassbox import (
 )
 from minigrad.compiler import export_c, to_c
 from minigrad.graph_opt import optimize, optimize_graph, OptimizationReport
+from minigrad.vmap import (
+    vmap,
+    make_functional,
+    per_sample_gradients,
+    jacrev,
+    batched_jacobian,
+)
+from minigrad.dp import (
+    clip_per_sample_gradients,
+    add_dp_noise,
+    apply_dp_gradients,
+    compute_dp_sgd_step,
+    PrivacyTelemetry,
+)
 
 __all__ = [
     "Tensor",
@@ -55,5 +69,15 @@ __all__ = [
     "optimize",
     "optimize_graph",
     "OptimizationReport",
+    "vmap",
+    "make_functional",
+    "per_sample_gradients",
+    "jacrev",
+    "batched_jacobian",
+    "clip_per_sample_gradients",
+    "add_dp_noise",
+    "apply_dp_gradients",
+    "compute_dp_sgd_step",
+    "PrivacyTelemetry",
     "__version__",
 ]

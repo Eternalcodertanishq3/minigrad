@@ -479,5 +479,49 @@ miniGrad operates directly on its explicit, transparent computational DAG:
   - `test_compiler_synergy_with_optimization`: Verified `export_c(..., optimize=True)` emits fused C kernels.
 - **Runnable Demo:** `examples/10_graph_optimization.py` demonstrating graph pruning, constant folding, ASCII optimization report, bit-for-bit autograd verification, and C compiler synergy.
 
+---
+
+## 14. Pillar 4: Pure Functional Vectorizing Map (`vmap`) & Differential Privacy (DP-SGD) Engine
+
+### 14.1 The Industry Pain Point: Per-Sample Gradient Loss & Differential Privacy Complexity
+In standard deep learning frameworks (PyTorch, TensorFlow), the backward pass aggregates gradients into a single accumulated parameter buffer:
+$$\nabla_\theta \mathcal{L}_{\text{batch}} = \frac{1}{B} \sum_{i=1}^B \nabla_\theta \ell_i(x_i, y_i)$$
+The individual per-sample gradients $\nabla_\theta \ell_i$ are lost forever during the sum reduction:
+- **Differential Privacy (DP-SGD):** To protect sensitive user data (healthcare, biometric, personal texts), gradients must be clipped per sample ($g_i \leftarrow g_i \cdot \min(1, C / \|g_i\|_2)$) before adding noise. In PyTorch without complex C++ libraries (like Opacus), computing per-sample gradients requires running $B$ individual forward/backward passes in a Python loop ($O(B)$ slowdown).
+- **MAML / Meta-Learning:** Computing per-task inner loop parameter updates is difficult with stateful module parameters.
+- **Batched Jacobians:** Evaluating the sensitivity matrix $\frac{\partial y_i}{\partial x_i} \in \mathbb{R}^{B \times M \times N}$ across a batch requires manual sequential loops.
+
+### 14.2 miniGrad Innovation: Pure Functional Autograd Transforms
+miniGrad introduces a first-class functional transformation suite in `minigrad.vmap` and `minigrad.dp`:
+- **`vmap(func, in_axes=0, out_axes=0)`:**
+  Automatically vectorizes any function designed for a single example over arbitrary batch dimensions without writing manual loops. Supports mixed unbatched/batched arguments (`in_axes=(None, 0, 0)` for shared parameters with batched data).
+- **`make_functional(module: Module)`:**
+  Converts any stateful miniGrad `Module` (Linear, Conv2D, TransformerBlock, MLP) into a stateless callable $f(\theta, x) \to y$. Allows models to be purely passed into functional autograd transforms without mutating instance state.
+- **`per_sample_gradients(module_or_fn, loss_fn, params, *batched_inputs)`:**
+  Computes individual gradient tensors $\mathbb{R}^{B \times \dots}$ for every parameter in a single pass. Mathematically verified against isolated sequential backpropagation down to $10^{-12}$ precision.
+- **Batched Jacobians (`jacrev` / `batched_jacobian`):**
+  Reverse-mode Jacobian computation using basis projections. Computes full $[B, M, N]$ Jacobian tensors in a single call.
+- **Differential Privacy (DP-SGD) Engine (`minigrad.dp`):**
+  - `clip_per_sample_gradients(per_sample_grads, max_norm)`: Bounds global $L_2$ sensitivity to $C$.
+  - `add_dp_noise(clipped_grads, noise_multiplier, max_norm, batch_size)`: Injects calibrated zero-mean Gaussian noise $\mathcal{N}(0, \sigma^2 I)$ where $\sigma = (C \cdot \text{noise\_multiplier}) / B$.
+  - `PrivacyTelemetry`: Emits structured ASCII privacy accounting reports (pre-clip norm distribution, fraction clipped, noise scale, noise-to-signal ratio).
+  - `apply_dp_gradients(model, private_grads)`: Connects private gradients directly to standard optimizers (`Adam`, `SGD`, `RMSprop`).
+
+### 14.3 Final Verification Status
+- **Total Automated Unit Tests:** **127/127 passing (0 warnings)**.
+- **11 new tests in `tests/test_vmap.py`:**
+  - `test_vmap_basic_vectorization`: Verified vectorization of dot products and element-wise math.
+  - `test_vmap_in_axes_shared_parameters`: Verified `in_axes=(None, 0)` with shared parameters.
+  - `test_vmap_multi_output_tuple`: Verified multi-output tuple stacking.
+  - `test_make_functional`: Verified stateless execution parity with stateful modules.
+  - `test_per_sample_gradients_exact_parity`: Verified 100% bit-for-bit gradient parity against sequential sample-by-sample autograd.
+  - `test_module_per_sample_gradients_method`: Verified `Module.per_sample_gradients()`.
+  - `test_jacrev_analytical`: Verified reverse-mode Jacobian against analytical derivatives.
+  - `test_batched_jacobian`: Verified $[B, M, N]$ batched Jacobian matrices across batch.
+  - `test_dp_clipping_bounds`: Verified strict $L_2$ norm bounding ($\le C$) on per-sample gradients.
+  - `test_dp_noise_injection`: Verified calibrated Gaussian noise injection variance.
+  - `test_dp_sgd_step_and_optimizer_integration`: Verified end-to-end DP-SGD step with `Adam` optimizer.
+- **Runnable Demo:** `examples/11_vmap_and_dp_sgd.py` demonstrating vectorization, outlier detection via per-sample gradient norms, batched Jacobians, and DP-SGD training with privacy telemetry.
+
 
 

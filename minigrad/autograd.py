@@ -92,9 +92,22 @@ def _compute_vjp(node: Tensor, g: Tensor) -> Tuple[Optional[Tensor], ...]:
 
     elif op == "matmul":
         a, b = children
-        vjp_a = (g @ b.transpose()) if a.requires_grad else None
-        vjp_b = (a.transpose() @ g) if b.requires_grad else None
-        return (vjp_a, vjp_b)
+        if a.data.ndim == 1 and b.data.ndim == 2:
+            g_2d = g.reshape(1, -1) if g.data.ndim == 1 else g
+            a_col = a.reshape(-1, 1)
+            vjp_a = (g_2d @ b.transpose()).reshape(a.shape) if a.requires_grad else None
+            vjp_b = (a_col @ g_2d) if b.requires_grad else None
+            return (vjp_a, vjp_b)
+        elif a.data.ndim == 2 and b.data.ndim == 1:
+            g_2d = g.reshape(-1, 1) if g.data.ndim == 1 else g
+            b_row = b.reshape(1, -1)
+            vjp_a = (g_2d @ b_row) if a.requires_grad else None
+            vjp_b = (a.transpose() @ g_2d).reshape(b.shape) if b.requires_grad else None
+            return (vjp_a, vjp_b)
+        else:
+            vjp_a = (g @ b.transpose()) if a.requires_grad else None
+            vjp_b = (a.transpose() @ g) if b.requires_grad else None
+            return (vjp_a, vjp_b)
 
     elif op == "tanh":
         (a,) = children
@@ -187,6 +200,33 @@ def _compute_vjp(node: Tensor, g: Tensor) -> Tuple[Optional[Tensor], ...]:
         np.add.at(grad_a, idx, g.data)
         vjp_a = Tensor(grad_a, requires_grad=True) if a.requires_grad else None
         return (vjp_a,)
+
+    elif op == "stack":
+        axis = getattr(node, "_ctx", 0)
+        vjps = []
+        for i, child in enumerate(children):
+            if child.requires_grad:
+                idx = [slice(None)] * g.data.ndim
+                idx[axis] = i
+                vjps.append(g[tuple(idx)])
+            else:
+                vjps.append(None)
+        return tuple(vjps)
+
+    elif op == "concat":
+        axis = getattr(node, "_ctx", 0)
+        vjps = []
+        offset = 0
+        for child in children:
+            length = child.shape[axis]
+            if child.requires_grad:
+                idx = [slice(None)] * g.data.ndim
+                idx[axis] = slice(offset, offset + length)
+                vjps.append(g[tuple(idx)])
+            else:
+                vjps.append(None)
+            offset += length
+        return tuple(vjps)
 
     # Fallback: default to None for unhandled operations
     return tuple(None for _ in children)

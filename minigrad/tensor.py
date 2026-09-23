@@ -167,14 +167,17 @@ class Tensor:
 
     def __matmul__(self, other: Union[Tensor, ArrayLike]) -> Tensor:
         other = self._ensure_tensor(other)
-        if self.data.ndim != 2 or other.data.ndim != 2:
+        is_1d_lhs = (self.data.ndim == 1)
+        self_2d = self.data.reshape(1, -1) if is_1d_lhs else self.data
+        if self_2d.ndim != 2 or other.data.ndim != 2:
             raise ValueError(
                 "Tensor matmul currently supports 2D tensors only; "
                 f"got shapes {self.data.shape} and {other.data.shape}"
             )
 
+        out_data = (self_2d @ other.data).reshape(-1) if is_1d_lhs else (self_2d @ other.data)
         out = Tensor(
-            self.data @ other.data,
+            out_data,
             requires_grad=self.requires_grad or other.requires_grad,
             _children=(self, other),
             _op="matmul",
@@ -183,10 +186,12 @@ class Tensor:
         def _backward() -> None:
             # d(AB)/dA = grad @ B.T
             # d(AB)/dB = A.T @ grad
+            grad_2d = out.grad.reshape(1, -1) if is_1d_lhs else out.grad
             if self.requires_grad:
-                self.grad += out.grad @ other.data.T
+                dx = grad_2d @ other.data.T
+                self.grad += dx.reshape(self.data.shape) if is_1d_lhs else dx
             if other.requires_grad:
-                other.grad += self.data.T @ out.grad
+                other.grad += self_2d.T @ grad_2d
 
         out._backward = _backward
         return out
@@ -401,7 +406,9 @@ class Tensor:
         out._backward = _backward
         return out
 
-    def reshape(self, *shape: int) -> Tensor:
+    def reshape(self, *shape: Union[int, Sequence[int]]) -> Tensor:
+        if len(shape) == 1 and isinstance(shape[0], (tuple, list)):
+            shape = tuple(shape[0])
         original_shape = self.data.shape
         out = Tensor(
             self.data.reshape(shape),
