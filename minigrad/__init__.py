@@ -53,6 +53,12 @@ from minigrad.sutra import (
     odeint,
     AdaptiveStepTelemetry,
 )
+from minigrad.avyaya import (
+    AVYAYA,
+    ReversibleBlock,
+    ReversibleSequential,
+    ReconstructionTelemetry,
+)
 
 __all__ = [
     "Tensor",
@@ -89,5 +95,9 @@ __all__ = [
     "NeuralODE",
     "odeint",
     "AdaptiveStepTelemetry",
+    "AVYAYA",
+    "ReversibleBlock",
+    "ReversibleSequential",
+    "ReconstructionTelemetry",
     "__version__",
 ]

@@ -445,6 +445,10 @@ class Tensor:
         out._backward = _backward
         return out
 
+    def split(self, split_size_or_sections: Union[int, Sequence[int]], axis: int = -1) -> List[Tensor]:
+        from minigrad.ops import split
+        return split(self, split_size_or_sections, axis=axis)
+
     def flatten(self) -> Tensor:
         return self.reshape(-1)
 

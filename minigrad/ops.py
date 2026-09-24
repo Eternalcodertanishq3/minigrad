@@ -210,15 +210,62 @@ def concat(tensors: list, axis: int = 0) -> Tensor:
 
     def _backward() -> None:
         offset = 0
+        norm_axis = axis if axis >= 0 else out.data.ndim + axis
         for t in tensors:
             if t.requires_grad:
                 slices = [slice(None)] * t.data.ndim
-                slices[axis] = slice(offset, offset + t.data.shape[axis])
+                slices[norm_axis] = slice(offset, offset + t.data.shape[norm_axis])
                 t.grad += out.grad[tuple(slices)]
-                offset += t.data.shape[axis]
+                offset += t.data.shape[norm_axis]
 
     out._backward = _backward
     return out
+
+
+def split(x: Tensor, split_size_or_sections: Union[int, Sequence[int]], axis: int = -1) -> List[Tensor]:
+    """Split a tensor into sub-tensors along an axis."""
+    norm_axis = axis if axis >= 0 else x.data.ndim + axis
+    total_len = x.data.shape[norm_axis]
+
+    if isinstance(split_size_or_sections, int):
+        split_size = split_size_or_sections
+        indices = list(range(split_size, total_len, split_size))
+        sub_arrays = np.split(x.data, indices, axis=norm_axis)
+    else:
+        sections = list(split_size_or_sections)
+        indices = np.cumsum(sections)[:-1]
+        sub_arrays = np.split(x.data, indices, axis=norm_axis)
+
+    outputs = []
+    offsets = []
+    curr = 0
+    for arr in sub_arrays:
+        length = arr.shape[norm_axis]
+        offsets.append((curr, curr + length))
+        curr += length
+
+    for idx, (arr, (start, end)) in enumerate(zip(sub_arrays, offsets)):
+        sub_t = Tensor(
+            arr,
+            requires_grad=x.requires_grad,
+            _children=(x,),
+            _op="split",
+            _ctx=(norm_axis, start, end),
+        )
+
+        def make_backward(s=start, e=end, st=sub_t):
+            def _backward() -> None:
+                if x.requires_grad:
+                    slices = [slice(None)] * x.data.ndim
+                    slices[norm_axis] = slice(s, e)
+                    x.grad[tuple(slices)] += st.grad
+
+            return _backward
+
+        sub_t._backward = make_backward()
+        outputs.append(sub_t)
+
+    return outputs
 
 
 def pad(x: Tensor, pad_width, constant_values: float = 0) -> Tensor:

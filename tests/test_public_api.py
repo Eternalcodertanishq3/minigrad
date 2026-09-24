@@ -2,12 +2,21 @@ from __future__ import annotations
 
 
 def test_nn_public_exports():
-    from minigrad.nn import BCEWithLogitsLoss, Dropout2D, NLLLoss, NeuralODE
+    from minigrad.nn import (
+        BCEWithLogitsLoss,
+        Dropout2D,
+        NLLLoss,
+        NeuralODE,
+        ReversibleBlock,
+        ReversibleSequential,
+    )
 
     assert BCEWithLogitsLoss.__name__ == "BCEWithLogitsLoss"
     assert Dropout2D.__name__ == "Dropout2D"
     assert NLLLoss.__name__ == "NLLLoss"
     assert NeuralODE.__name__ == "NeuralODE"
+    assert ReversibleBlock.__name__ == "ReversibleBlock"
+    assert ReversibleSequential.__name__ == "ReversibleSequential"
 
 
 def test_top_level_sutra_exports():
@@ -17,6 +26,20 @@ def test_top_level_sutra_exports():
     assert NeuralODE.__name__ == "NeuralODE"
     assert "dopri5" in SUTRA.solvers()
     assert AdaptiveStepTelemetry.__name__ == "AdaptiveStepTelemetry"
+
+
+def test_top_level_avyaya_exports():
+    from minigrad import (
+        AVYAYA,
+        ReversibleBlock,
+        ReversibleSequential,
+        ReconstructionTelemetry,
+    )
+
+    assert ReversibleBlock.__name__ == "ReversibleBlock"
+    assert ReversibleSequential.__name__ == "ReversibleSequential"
+    assert ReconstructionTelemetry.__name__ == "ReconstructionTelemetry"
+    assert AVYAYA.ReversibleBlock is ReversibleBlock
 
 
 def test_cli_entry_points_importable():

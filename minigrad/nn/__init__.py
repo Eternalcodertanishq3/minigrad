@@ -22,6 +22,7 @@ from minigrad.nn.flatten import Flatten
 from minigrad.nn.loss import MSELoss, CrossEntropyLoss, BCELoss, BCEWithLogitsLoss, NLLLoss
 from minigrad.nn.sequential import Sequential
 from minigrad.sutra import NeuralODE
+from minigrad.avyaya import ReversibleBlock, ReversibleSequential
 
 __all__ = [
     "Module",
@@ -52,4 +53,6 @@ __all__ = [
     "LoRALinear",
     "apply_lora",
     "NeuralODE",
+    "ReversibleBlock",
+    "ReversibleSequential",
 ]
