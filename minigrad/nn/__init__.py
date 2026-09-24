@@ -28,6 +28,11 @@ from minigrad.pramana import (
     DistributionalSequential,
     GaussianNLLLoss,
 )
+from minigrad.tarka import (
+    NeuralPredicate,
+    NeuralRelation,
+    SemanticLoss,
+)
 
 __all__ = [
     "Module",
@@ -63,4 +68,7 @@ __all__ = [
     "DistributionalLinear",
     "DistributionalSequential",
     "GaussianNLLLoss",
+    "NeuralPredicate",
+    "NeuralRelation",
+    "SemanticLoss",
 ]

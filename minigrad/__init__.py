@@ -67,6 +67,14 @@ from minigrad.pramana import (
     GaussianNLLLoss,
     PramanaTelemetry,
 )
+from minigrad.tarka import (
+    TARKA,
+    LogicTensor,
+    NeuralPredicate,
+    NeuralRelation,
+    SemanticLoss,
+    TarkaTelemetry,
+)
 
 __all__ = [
     "Tensor",
@@ -113,5 +121,11 @@ __all__ = [
     "DistributionalSequential",
     "GaussianNLLLoss",
     "PramanaTelemetry",
+    "TARKA",
+    "LogicTensor",
+    "NeuralPredicate",
+    "NeuralRelation",
+    "SemanticLoss",
+    "TarkaTelemetry",
     "__version__",
 ]

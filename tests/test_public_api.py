@@ -12,6 +12,9 @@ def test_nn_public_exports():
         DistributionalLinear,
         DistributionalSequential,
         GaussianNLLLoss,
+        NeuralPredicate,
+        NeuralRelation,
+        SemanticLoss,
     )
 
     assert BCEWithLogitsLoss.__name__ == "BCEWithLogitsLoss"
@@ -23,6 +26,9 @@ def test_nn_public_exports():
     assert DistributionalLinear.__name__ == "DistributionalLinear"
     assert DistributionalSequential.__name__ == "DistributionalSequential"
     assert GaussianNLLLoss.__name__ == "GaussianNLLLoss"
+    assert NeuralPredicate.__name__ == "NeuralPredicate"
+    assert NeuralRelation.__name__ == "NeuralRelation"
+    assert SemanticLoss.__name__ == "SemanticLoss"
 
 
 def test_top_level_sutra_exports():
@@ -65,6 +71,27 @@ def test_top_level_pramana_exports():
     assert PramanaTelemetry.__name__ == "PramanaTelemetry"
     assert PRAMANA.DistributionalTensor is DistributionalTensor
     assert PRAMANA.DistributionalLinear is DistributionalLinear
+
+
+def test_top_level_tarka_exports():
+    from minigrad import (
+        TARKA,
+        LogicTensor,
+        NeuralPredicate,
+        NeuralRelation,
+        SemanticLoss,
+        TarkaTelemetry,
+    )
+
+    assert LogicTensor.__name__ == "LogicTensor"
+    assert NeuralPredicate.__name__ == "NeuralPredicate"
+    assert NeuralRelation.__name__ == "NeuralRelation"
+    assert SemanticLoss.__name__ == "SemanticLoss"
+    assert TarkaTelemetry.__name__ == "TarkaTelemetry"
+    assert TARKA.LogicTensor is LogicTensor
+    assert TARKA.NeuralPredicate is NeuralPredicate
+    assert TARKA.NeuralRelation is NeuralRelation
+    assert TARKA.SemanticLoss is SemanticLoss
 
 
 def test_cli_entry_points_importable():
