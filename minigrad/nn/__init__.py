@@ -33,6 +33,13 @@ from minigrad.tarka import (
     NeuralRelation,
     SemanticLoss,
 )
+from minigrad.spanda import (
+    LIFCell,
+    LIFLayer,
+    SpikingLinear,
+    SpikingSequential,
+    MembraneDecoder,
+)
 
 __all__ = [
     "Module",
@@ -71,4 +78,9 @@ __all__ = [
     "NeuralPredicate",
     "NeuralRelation",
     "SemanticLoss",
+    "LIFCell",
+    "LIFLayer",
+    "SpikingLinear",
+    "SpikingSequential",
+    "MembraneDecoder",
 ]

@@ -15,6 +15,11 @@ def test_nn_public_exports():
         NeuralPredicate,
         NeuralRelation,
         SemanticLoss,
+        LIFCell,
+        LIFLayer,
+        SpikingLinear,
+        SpikingSequential,
+        MembraneDecoder,
     )
 
     assert BCEWithLogitsLoss.__name__ == "BCEWithLogitsLoss"
@@ -29,6 +34,11 @@ def test_nn_public_exports():
     assert NeuralPredicate.__name__ == "NeuralPredicate"
     assert NeuralRelation.__name__ == "NeuralRelation"
     assert SemanticLoss.__name__ == "SemanticLoss"
+    assert LIFCell.__name__ == "LIFCell"
+    assert LIFLayer.__name__ == "LIFLayer"
+    assert SpikingLinear.__name__ == "SpikingLinear"
+    assert SpikingSequential.__name__ == "SpikingSequential"
+    assert MembraneDecoder.__name__ == "MembraneDecoder"
 
 
 def test_top_level_sutra_exports():
@@ -92,6 +102,35 @@ def test_top_level_tarka_exports():
     assert TARKA.NeuralPredicate is NeuralPredicate
     assert TARKA.NeuralRelation is NeuralRelation
     assert TARKA.SemanticLoss is SemanticLoss
+
+
+def test_top_level_spanda_exports():
+    from minigrad import (
+        SPANDA,
+        surrogate_spike,
+        LIFCell,
+        LIFLayer,
+        SpikingLinear,
+        SpikingSequential,
+        RateEncoder,
+        DirectEncoder,
+        RateDecoder,
+        MembraneDecoder,
+        SpandaTelemetry,
+    )
+
+    assert callable(surrogate_spike)
+    assert LIFCell.__name__ == "LIFCell"
+    assert LIFLayer.__name__ == "LIFLayer"
+    assert SpikingLinear.__name__ == "SpikingLinear"
+    assert SpikingSequential.__name__ == "SpikingSequential"
+    assert RateEncoder.__name__ == "RateEncoder"
+    assert DirectEncoder.__name__ == "DirectEncoder"
+    assert RateDecoder.__name__ == "RateDecoder"
+    assert MembraneDecoder.__name__ == "MembraneDecoder"
+    assert SpandaTelemetry.__name__ == "SpandaTelemetry"
+    assert SPANDA.LIFCell is LIFCell
+    assert SPANDA.SpikingLinear is SpikingLinear
 
 
 def test_cli_entry_points_importable():

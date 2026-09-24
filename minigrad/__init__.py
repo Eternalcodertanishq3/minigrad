@@ -75,6 +75,19 @@ from minigrad.tarka import (
     SemanticLoss,
     TarkaTelemetry,
 )
+from minigrad.spanda import (
+    SPANDA,
+    surrogate_spike,
+    LIFCell,
+    LIFLayer,
+    SpikingLinear,
+    SpikingSequential,
+    RateEncoder,
+    DirectEncoder,
+    RateDecoder,
+    MembraneDecoder,
+    SpandaTelemetry,
+)
 
 __all__ = [
     "Tensor",
@@ -127,5 +140,16 @@ __all__ = [
     "NeuralRelation",
     "SemanticLoss",
     "TarkaTelemetry",
+    "SPANDA",
+    "surrogate_spike",
+    "LIFCell",
+    "LIFLayer",
+    "SpikingLinear",
+    "SpikingSequential",
+    "RateEncoder",
+    "DirectEncoder",
+    "RateDecoder",
+    "MembraneDecoder",
+    "SpandaTelemetry",
     "__version__",
 ]
