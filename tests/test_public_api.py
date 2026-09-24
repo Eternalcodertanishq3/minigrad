@@ -2,11 +2,21 @@ from __future__ import annotations
 
 
 def test_nn_public_exports():
-    from minigrad.nn import BCEWithLogitsLoss, Dropout2D, NLLLoss
+    from minigrad.nn import BCEWithLogitsLoss, Dropout2D, NLLLoss, NeuralODE
 
     assert BCEWithLogitsLoss.__name__ == "BCEWithLogitsLoss"
     assert Dropout2D.__name__ == "Dropout2D"
     assert NLLLoss.__name__ == "NLLLoss"
+    assert NeuralODE.__name__ == "NeuralODE"
+
+
+def test_top_level_sutra_exports():
+    from minigrad import SUTRA, NeuralODE, odeint, AdaptiveStepTelemetry
+
+    assert callable(odeint)
+    assert NeuralODE.__name__ == "NeuralODE"
+    assert "dopri5" in SUTRA.solvers()
+    assert AdaptiveStepTelemetry.__name__ == "AdaptiveStepTelemetry"
 
 
 def test_cli_entry_points_importable():

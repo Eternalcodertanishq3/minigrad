@@ -21,6 +21,7 @@ from minigrad.nn.dropout import Dropout, Dropout2D
 from minigrad.nn.flatten import Flatten
 from minigrad.nn.loss import MSELoss, CrossEntropyLoss, BCELoss, BCEWithLogitsLoss, NLLLoss
 from minigrad.nn.sequential import Sequential
+from minigrad.sutra import NeuralODE
 
 __all__ = [
     "Module",
@@ -50,4 +51,5 @@ __all__ = [
     "TransformerBlock",
     "LoRALinear",
     "apply_lora",
+    "NeuralODE",
 ]

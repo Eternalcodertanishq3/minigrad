@@ -47,6 +47,12 @@ from minigrad.dp import (
     compute_dp_sgd_step,
     PrivacyTelemetry,
 )
+from minigrad.sutra import (
+    SUTRA,
+    NeuralODE,
+    odeint,
+    AdaptiveStepTelemetry,
+)
 
 __all__ = [
     "Tensor",
@@ -79,5 +85,9 @@ __all__ = [
     "apply_dp_gradients",
     "compute_dp_sgd_step",
     "PrivacyTelemetry",
+    "SUTRA",
+    "NeuralODE",
+    "odeint",
+    "AdaptiveStepTelemetry",
     "__version__",
 ]

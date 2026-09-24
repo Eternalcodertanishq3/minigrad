@@ -743,6 +743,12 @@ class Tensor:
     def item(self) -> float:
         return float(self.data.flat[0])
 
+    def __float__(self) -> float:
+        return float(self.data.flat[0])
+
+    def __int__(self) -> int:
+        return int(self.data.flat[0])
+
     def zero_grad(self) -> None:
         self.grad = np.zeros_like(self.data)
 

@@ -523,5 +523,50 @@ miniGrad introduces a first-class functional transformation suite in `minigrad.v
   - `test_dp_sgd_step_and_optimizer_integration`: Verified end-to-end DP-SGD step with `Adam` optimizer.
 - **Runnable Demo:** `examples/11_vmap_and_dp_sgd.py` demonstrating vectorization, outlier detection via per-sample gradient norms, batched Jacobians, and DP-SGD training with privacy telemetry.
 
+---
+
+## 15. Innovation 1: S.U.T.R.A. (State-space Unified Time-continuous Runge-Kutta Adjoint)
+
+### 15.1 Motivation & First Principles
+Conventional deep learning frameworks (PyTorch, TensorFlow) conceptualize neural networks as discrete layers:
+$$h_{t+1} = h_t + f(h_t, \theta_t)$$
+This limits networks to fixed depths, consumes $O(N)$ memory to store intermediate activations across time, and struggles with irregularly sampled time-series data.
+
+By taking $\Delta t \to 0$, the transformation becomes a continuous-depth ordinary differential equation:
+$$\frac{dh(t)}{dt} = f(h(t), t, \theta)$$
+Where latent state $h(T) = h(0) + \int_0^T f(h(t), t, \theta) dt$.
+
+### 15.2 The $O(1)$ Memory Pontryagin Adjoint Method
+Standard backprop through numerical ODE solvers unrolls $N$ steps in the autograd computation graph, requiring $O(N)$ memory. S.U.T.R.A. implements the continuous adjoint state method (Pontryagin Maximum Principle):
+- Adjoint state: $a(t) = \frac{\partial \mathcal{L}}{\partial h(t)}$.
+- Continuous dynamics: $\frac{da(t)}{dt} = - a(t)^\top \frac{\partial f}{\partial h}$.
+- Parameter sensitivities: $\frac{d(\nabla_\theta \mathcal{L})}{dt} = - a(t)^\top \frac{\partial f}{\partial \theta}$.
+
+By integrating the augmented state $S(t) = [h(t), a(t), \nabla_\theta \mathcal{L}]$ backwards from $T \to 0$:
+1. $h(t)$ is reconstructed backwards in time without caching forward activations.
+2. Sensitivity $a(t)$ propagates to the initial state $a(0) = \nabla_{h(0)} \mathcal{L}$.
+3. Parameter gradients accumulate continuously with **strictly $O(1)$ constant memory**.
+
+### 15.3 Architecture & Implementation
+- **`minigrad/sutra.py`**:
+  - `EulerSolver`: 1st order explicit solver.
+  - `RK4Solver`: 4th order classical Runge-Kutta solver.
+  - `Dopri5Solver`: 5(4) Dormand-Prince adaptive step-size solver with FSAL (First Same As Last) cache and error tolerance control (`rtol`, `atol`).
+  - `odeint`: High-level functional ODE integrator supporting both terminal state and continuous trajectory output.
+  - `NeuralODE`: Subclass of `minigrad.nn.Module` wrapping continuous vector fields and seamlessly training with `Adam`/`SGD`.
+  - `SUTRA`: Unified class/namespace exposing solvers, engine, and telemetry.
+- **`minigrad/tensor.py`**: Added `__float__` and `__int__` dunder methods for zero-copy scalar conversion.
+- **Verification (`tests/test_sutra.py`)**:
+  - `test_linear_ode_analytical_solution`: Verified Euler, RK4, and Dopri5 match analytical $y(t) = y_0 e^{\lambda t}$.
+  - `test_adjoint_gradient_analytical_parity`: Verified adjoint parameter/state gradients match exact calculus $\frac{\partial}{\partial \theta}[\frac{1}{2}(y_0 e^\theta)^2] = y_0^2 e^{2\theta}$.
+  - `test_adjoint_vs_discrete_backprop_parity`: Verified numerical gradient parity between `use_adjoint=True` and unrolled autograd `use_adjoint=False` within $10^{-3}$.
+  - `test_o1_memory_invariance`: Verified autograd graph size is strictly constant (2 nodes) regardless of whether $N = 10$ or $N = 500$ solver steps.
+  - `test_dopri5_adaptive_step_control`: Verified dynamic depth and step size adaptation based on tolerance.
+  - `test_neural_ode_module_training`: Verified training of continuous 2D spiral dynamics using `Adam` (loss reduced by 98.3%).
+  - `test_neural_ode_in_sequential`: Verified composite pipeline integration with standard Linear layers.
+  - `test_time_dependent_vector_field`: Verified non-autonomous continuous vector fields $f(t, y)$.
+- **Demonstration:** `examples/12_sutra_neural_ode.py`.
+
+
 
 
