@@ -59,6 +59,14 @@ from minigrad.avyaya import (
     ReversibleSequential,
     ReconstructionTelemetry,
 )
+from minigrad.pramana import (
+    PRAMANA,
+    DistributionalTensor,
+    DistributionalLinear,
+    DistributionalSequential,
+    GaussianNLLLoss,
+    PramanaTelemetry,
+)
 
 __all__ = [
     "Tensor",
@@ -99,5 +107,11 @@ __all__ = [
     "ReversibleBlock",
     "ReversibleSequential",
     "ReconstructionTelemetry",
+    "PRAMANA",
+    "DistributionalTensor",
+    "DistributionalLinear",
+    "DistributionalSequential",
+    "GaussianNLLLoss",
+    "PramanaTelemetry",
     "__version__",
 ]

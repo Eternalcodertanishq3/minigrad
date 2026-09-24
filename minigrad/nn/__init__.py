@@ -23,6 +23,11 @@ from minigrad.nn.loss import MSELoss, CrossEntropyLoss, BCELoss, BCEWithLogitsLo
 from minigrad.nn.sequential import Sequential
 from minigrad.sutra import NeuralODE
 from minigrad.avyaya import ReversibleBlock, ReversibleSequential
+from minigrad.pramana import (
+    DistributionalLinear,
+    DistributionalSequential,
+    GaussianNLLLoss,
+)
 
 __all__ = [
     "Module",
@@ -55,4 +60,7 @@ __all__ = [
     "NeuralODE",
     "ReversibleBlock",
     "ReversibleSequential",
+    "DistributionalLinear",
+    "DistributionalSequential",
+    "GaussianNLLLoss",
 ]

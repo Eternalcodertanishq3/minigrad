@@ -9,6 +9,9 @@ def test_nn_public_exports():
         NeuralODE,
         ReversibleBlock,
         ReversibleSequential,
+        DistributionalLinear,
+        DistributionalSequential,
+        GaussianNLLLoss,
     )
 
     assert BCEWithLogitsLoss.__name__ == "BCEWithLogitsLoss"
@@ -17,6 +20,9 @@ def test_nn_public_exports():
     assert NeuralODE.__name__ == "NeuralODE"
     assert ReversibleBlock.__name__ == "ReversibleBlock"
     assert ReversibleSequential.__name__ == "ReversibleSequential"
+    assert DistributionalLinear.__name__ == "DistributionalLinear"
+    assert DistributionalSequential.__name__ == "DistributionalSequential"
+    assert GaussianNLLLoss.__name__ == "GaussianNLLLoss"
 
 
 def test_top_level_sutra_exports():
@@ -40,6 +46,25 @@ def test_top_level_avyaya_exports():
     assert ReversibleSequential.__name__ == "ReversibleSequential"
     assert ReconstructionTelemetry.__name__ == "ReconstructionTelemetry"
     assert AVYAYA.ReversibleBlock is ReversibleBlock
+
+
+def test_top_level_pramana_exports():
+    from minigrad import (
+        PRAMANA,
+        DistributionalTensor,
+        DistributionalLinear,
+        DistributionalSequential,
+        GaussianNLLLoss,
+        PramanaTelemetry,
+    )
+
+    assert DistributionalTensor.__name__ == "DistributionalTensor"
+    assert DistributionalLinear.__name__ == "DistributionalLinear"
+    assert DistributionalSequential.__name__ == "DistributionalSequential"
+    assert GaussianNLLLoss.__name__ == "GaussianNLLLoss"
+    assert PramanaTelemetry.__name__ == "PramanaTelemetry"
+    assert PRAMANA.DistributionalTensor is DistributionalTensor
+    assert PRAMANA.DistributionalLinear is DistributionalLinear
 
 
 def test_cli_entry_points_importable():
