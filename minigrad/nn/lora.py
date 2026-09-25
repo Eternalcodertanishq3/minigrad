@@ -127,7 +127,7 @@ class LoRALinear(Module):
 
         result = Linear(in_f, out_f, bias=has_bias)
         result.weight = Tensor(merged_weight, requires_grad=True)
-        if has_bias:
+        if self.base.bias is not None:
             result.bias = Tensor(self.base.bias.data.copy(), requires_grad=True)
         return result
 
@@ -175,7 +175,7 @@ def apply_lora(
     """
     replaced = 0
 
-    def _apply(module: Module) -> int:
+    def _apply(module: Module) -> None:
         nonlocal replaced
         for name, attr in list(vars(module).items()):
             if isinstance(attr, Linear):

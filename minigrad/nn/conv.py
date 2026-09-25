@@ -91,7 +91,7 @@ def col2im(cols: np.ndarray, x_shape: Tuple[int, ...], kernel_h: int, kernel_w: 
 
     # Scatter-add using np.add.at to handle overlapping indices correctly
     # windows shape: (N, C, kH, kW, out_h, out_w) — matches index dims on axes 2,3,4,5
-    np.add.at(dx_padded, (slice(None), slice(None), row_idx, col_idx), windows)
+    np.add.at(dx_padded, (slice(None), slice(None), row_idx, col_idx), windows)  # type: ignore[arg-type]
 
     # Remove padding if present
     if padding > 0:

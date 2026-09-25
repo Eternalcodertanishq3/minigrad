@@ -12,18 +12,14 @@ Tests:
 8. Integration with C compiler: export_c(..., optimize=True).
 """
 import numpy as np
-import pytest
 
 from minigrad.tensor import Tensor
 from minigrad.graph import topological_sort
 from minigrad.graph_opt import (
-    optimize,
     optimize_graph,
-    fused_linear,
-    fused_linear_relu,
     OptimizationReport,
 )
-from minigrad.nn import Module, Linear, Sequential, ReLU
+from minigrad.nn import Linear, Sequential, ReLU
 from minigrad.compiler import export_c
 
 

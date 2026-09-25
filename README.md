@@ -3,7 +3,7 @@
 <div align="center">
 
 [![CI](https://github.com/Eternalcodertanishq3/minigrad/actions/workflows/ci.yml/badge.svg)](https://github.com/Eternalcodertanishq3/minigrad/actions/workflows/ci.yml)
-[![PyPI version](https://badge.fury.io/py/minigrad-framework.svg)](https://pypi.org/project/minigrad-framework/)
+[![PyPI version](https://img.shields.io/pypi/v/minigrad-framework.svg?color=blue)](https://pypi.org/project/minigrad-framework/)
 [![Tests](https://img.shields.io/badge/tests-171%20passing-brightgreen.svg)](tests/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)

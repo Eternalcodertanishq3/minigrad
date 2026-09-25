@@ -3,7 +3,6 @@ tests/test_spanda.py — Unit Tests for Innovation 5: S.P.A.N.D.A. (स्पन
 Spike-Propagation Asynchronous Network Dynamics & Autograd.
 """
 import numpy as np
-import pytest
 
 from minigrad import (
     SPANDA,
@@ -13,9 +12,7 @@ from minigrad import (
     SpikingLinear,
     SpikingSequential,
     RateEncoder,
-    DirectEncoder,
     RateDecoder,
-    MembraneDecoder,
     SpandaTelemetry,
     Tensor,
 )

@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import os
 import sys
-from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -21,9 +20,6 @@ import minigrad
 from minigrad import (
     Tensor,
     vmap,
-    make_functional,
-    per_sample_gradients,
-    jacrev,
     batched_jacobian,
     compute_dp_sgd_step,
     apply_dp_gradients,
@@ -83,7 +79,7 @@ def main():
     # Extract per-sample gradients in a single vectorized pass!
     sample_grads = mlp.per_sample_gradients(mse_loss, batch_x, batch_y)
 
-    print(f"  * Extracted Gradient Shapes:")
+    print("  * Extracted Gradient Shapes:")
     for name, g in sample_grads.items():
         print(f"    - {name:20s}: {g.shape} (Leading dim B={N})")
 

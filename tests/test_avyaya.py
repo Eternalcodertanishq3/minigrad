@@ -13,9 +13,8 @@ Tests:
 8. test_batched_multi_dimensional_inputs (3D sequence and 4D tensor inputs)
 """
 import numpy as np
-import pytest
 
-from minigrad.avyaya import AVYAYA, ReversibleBlock, ReversibleSequential, ReconstructionTelemetry
+from minigrad.avyaya import ReversibleBlock, ReversibleSequential
 from minigrad.graph import topological_sort
 from minigrad.nn import GELU, LayerNorm, Linear, MSELoss, ReLU, Sequential, Tanh
 from minigrad.optim import Adam

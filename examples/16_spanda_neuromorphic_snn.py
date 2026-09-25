@@ -23,12 +23,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from minigrad import (
     SPANDA,
     surrogate_spike,
-    LIFCell,
-    LIFLayer,
     SpikingLinear,
     SpikingSequential,
     RateDecoder,
-    SpandaTelemetry,
     Tensor,
 )
 from minigrad.nn import MSELoss

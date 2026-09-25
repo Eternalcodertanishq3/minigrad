@@ -15,7 +15,7 @@ Features:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple, Union
+from typing import Iterator, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 

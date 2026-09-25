@@ -6,7 +6,7 @@ cycle detection for the dynamic computation graph built by Tensor operations.
 """
 from __future__ import annotations
 
-from typing import List, Set, Callable, Dict, Any
+from typing import List, Set, Dict, Any
 from collections import defaultdict
 
 from minigrad.tensor import Tensor

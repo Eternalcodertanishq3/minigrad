@@ -16,10 +16,9 @@ References:
 from __future__ import annotations
 
 import json
-import os
 import struct
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 
@@ -214,7 +213,7 @@ class safe_open:
     def __init__(self, filename: Union[str, Path], framework: str = "numpy") -> None:
         self.path = Path(filename)
         self.framework = framework
-        self._file = None
+        self._file: Any = None
         self._header: Dict[str, Any] = {}
         self._data_offset = 0
 

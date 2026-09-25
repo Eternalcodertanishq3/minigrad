@@ -10,7 +10,7 @@ This is exactly how PyTorch's autograd works — just in pure Python/NumPy.
 from __future__ import annotations
 
 import numpy as np
-from typing import Set, Tuple, Callable, Union, Optional, List
+from typing import Set, Tuple, Callable, Union, Optional, List, Any, Sequence
 
 # Type alias for convenience
 ArrayLike = Union[np.ndarray, list, tuple, float, int]
@@ -41,14 +41,14 @@ class Tensor:
     ) -> None:
         from minigrad.graph import is_grad_enabled
 
-        self.data = np.array(data, dtype=np.float64)
-        self.grad = np.zeros_like(self.data)
+        self.data: np.ndarray = np.array(data, dtype=np.float64)
+        self.grad: Any = np.zeros_like(self.data)
         if not is_grad_enabled():
             self.requires_grad = False
             self._prev: Tuple[Tensor, ...] = ()
         else:
             self.requires_grad = requires_grad
-            self._prev: Tuple[Tensor, ...] = tuple(_children)
+            self._prev = tuple(_children)
         self._backward: Callable[[], None] = lambda: None
         self._op: str = _op
         self._ctx: Any = _ctx
@@ -406,7 +406,7 @@ class Tensor:
         out._backward = _backward
         return out
 
-    def reshape(self, *shape: Union[int, Sequence[int]]) -> Tensor:
+    def reshape(self, *shape: Any) -> Tensor:
         if len(shape) == 1 and isinstance(shape[0], (tuple, list)):
             shape = tuple(shape[0])
         original_shape = self.data.shape
@@ -511,20 +511,21 @@ class Tensor:
 
         anomaly_check = is_anomaly_detection_enabled()
 
+        topo: List[Tensor] = []
+        visited: Set[int] = set()
+
+        def build_topo(node: Tensor) -> None:
+            if id(node) not in visited:
+                visited.add(id(node))
+                for child in node._prev:
+                    build_topo(child)
+                topo.append(node)
+
+        build_topo(self)
+
         if create_graph:
             from minigrad.autograd import grad
 
-            topo: List[Tensor] = []
-            visited: Set[int] = set()
-
-            def build_topo(node: Tensor) -> None:
-                if id(node) not in visited:
-                    visited.add(id(node))
-                    for child in node._prev:
-                        build_topo(child)
-                    topo.append(node)
-
-            build_topo(self)
             leaf_nodes = [node for node in topo if not node._prev and node.requires_grad]
             if not leaf_nodes:
                 return
@@ -539,18 +540,6 @@ class Tensor:
                     leaf.grad = Tensor(leaf.grad) + g
             self.grad = Tensor(np.ones_like(self.data), requires_grad=create_graph)
             return
-
-        topo: List[Tensor] = []
-        visited: Set[int] = set()
-
-        def build_topo(node: Tensor) -> None:
-            if id(node) not in visited:
-                visited.add(id(node))
-                for child in node._prev:
-                    build_topo(child)
-                topo.append(node)
-
-        build_topo(self)
 
         if anomaly_check:
             # Check 1: Forward pass NaN/Inf check if the loss itself is poisoned

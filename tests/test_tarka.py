@@ -3,15 +3,12 @@ tests/test_tarka.py — Unit Tests for Innovation 4: T.A.R.K.A. (तर्क)
 Tensorized Algebraic Reasoning and Knowledge-grounded Autograd.
 """
 import numpy as np
-import pytest
 
 from minigrad import (
-    TARKA,
     LogicTensor,
     NeuralPredicate,
     NeuralRelation,
     SemanticLoss,
-    TarkaTelemetry,
     Tensor,
 )
 from minigrad.tarka import (
@@ -22,7 +19,7 @@ from minigrad.tarka import (
     CustomAxiom,
 )
 from minigrad.nn import Linear, Sequential, ReLU, MSELoss
-from minigrad.optim import SGD, Adam
+from minigrad.optim import Adam
 
 
 # ── 1. T-Norm Truth Tables & Exact Algebra ─────────────────────────────

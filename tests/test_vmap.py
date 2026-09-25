@@ -13,7 +13,6 @@ Tests:
 9. PrivacyTelemetry reporting and end-to-end optimizer integration.
 """
 import numpy as np
-import pytest
 
 import minigrad
 from minigrad import Tensor
@@ -33,7 +32,6 @@ from minigrad.dp import (
     compute_dp_sgd_step,
     PrivacyTelemetry,
 )
-from minigrad.autograd import grad
 
 
 # ==============================================================================

@@ -8,7 +8,7 @@ import pytest
 
 from minigrad.tensor import Tensor
 from minigrad.safetensors import save_file, load_file, safe_open
-from minigrad.nn import Linear, Sequential, LayerNorm
+from minigrad.nn import Linear, Sequential
 
 
 def test_roundtrip_basic():
@@ -140,7 +140,8 @@ def test_bfloat16_loading():
         # float32 2.0 is 0x40000000 -> BF16 is 0x4000
         bf16_bytes = np.array([0x3F80, 0x4000], dtype=np.uint16).tobytes()
 
-        import json, struct
+        import json
+        import struct
         header = {
             "bf16_tensor": {
                 "dtype": "BF16",

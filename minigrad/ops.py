@@ -11,7 +11,7 @@ the computation graph.
 from __future__ import annotations
 
 import numpy as np
-from typing import Any, Tuple, Optional, Union
+from typing import Any, Tuple, Optional, Union, Sequence, List
 
 from minigrad.tensor import Tensor
 
@@ -233,7 +233,7 @@ def split(x: Tensor, split_size_or_sections: Union[int, Sequence[int]], axis: in
         sub_arrays = np.split(x.data, indices, axis=norm_axis)
     else:
         sections = list(split_size_or_sections)
-        indices = np.cumsum(sections)[:-1]
+        indices = list(np.cumsum(sections)[:-1])
         sub_arrays = np.split(x.data, indices, axis=norm_axis)
 
     outputs = []
@@ -348,3 +348,8 @@ def einsum(subscripts: str, *operands: Tensor) -> Tensor:
 
     out._backward = _backward
     return out
+
+
+# Alias for NumPy parity
+concatenate = concat
+

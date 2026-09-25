@@ -13,12 +13,11 @@ Tests:
 8. test_time_dependent_vector_field (f(t, y) with explicit continuous time)
 """
 import numpy as np
-import pytest
 
 from minigrad.graph import topological_sort
 from minigrad.nn import Linear, Module, Sequential, Tanh, MSELoss
 from minigrad.optim import Adam
-from minigrad.sutra import SUTRA, NeuralODE, odeint, AdaptiveStepTelemetry
+from minigrad.sutra import NeuralODE, odeint
 from minigrad.tensor import Tensor
 
 

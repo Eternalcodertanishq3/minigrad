@@ -45,6 +45,7 @@ class XORModel(Module):
 
 
 def train():
+    np.random.seed(42)
     print("=" * 60)
     print("XOR Problem — 2-Layer MLP")
     print("=" * 60)

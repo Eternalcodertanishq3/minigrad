@@ -19,7 +19,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from minigrad import (
-    TARKA,
     LogicTensor,
     NeuralPredicate,
     NeuralRelation,
@@ -28,9 +27,7 @@ from minigrad import (
 )
 from minigrad.tarka import (
     TransitivityAxiom,
-    SymmetryAxiom,
     MutualExclusionAxiom,
-    CustomAxiom,
 )
 from minigrad.nn import Module, Linear, Sequential, ReLU, MSELoss
 from minigrad.optim import Adam
@@ -172,7 +169,7 @@ def demo_low_data_mutual_exclusion():
     violation_base = out_base[0] * out_base[1]
     violation_tarka = out_tarka[0] * out_tarka[1]
 
-    print(f"Ambiguous Test Point: x = [0.0, 0.0]")
+    print("Ambiguous Test Point: x = [0.0, 0.0]")
     print(f"{'Model':<28} | {'Pred Class A':<14} | {'Pred Class B':<14} | {'Contradiction (A AND B)'}")
     print("-" * 75)
     print(f"{'Standard Baseline':<28} | {out_base[0]:<14.4f} | {out_base[1]:<14.4f} | {violation_base:.4f} (CONTRADICTION!)")

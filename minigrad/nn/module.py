@@ -172,7 +172,7 @@ class Module:
 
     def save(self, path: str | Path) -> None:
         """Save state_dict() to a compressed .npz file."""
-        np.savez_compressed(path, **self.state_dict())
+        np.savez_compressed(path, **self.state_dict())  # type: ignore[arg-type]
 
     def load(self, path: str | Path, strict: bool = True) -> None:
         """Load a state dictionary from a .npz file."""
@@ -182,13 +182,13 @@ class Module:
     def save_safetensors(self, path: str | Path, metadata: Optional[dict[str, str]] = None) -> None:
         """Save state_dict() to a Hugging Face .safetensors file."""
         from minigrad.safetensors import save_file
-        save_file(self.state_dict(), path, metadata=metadata)
+        save_file(self.state_dict(), path, metadata=metadata)  # type: ignore[arg-type]
 
     def load_safetensors(self, path: str | Path, strict: bool = True) -> None:
         """Load a state dictionary from a Hugging Face .safetensors file."""
         from minigrad.safetensors import load_file
         tensors = load_file(path)
-        self.load_state_dict(tensors, strict=strict)
+        self.load_state_dict(tensors, strict=strict)  # type: ignore[arg-type]
 
     def zero_grad(self) -> None:
         """Set gradients of all parameters to zero. Call before loss.backward()."""

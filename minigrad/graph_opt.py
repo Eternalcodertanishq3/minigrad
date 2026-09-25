@@ -13,7 +13,7 @@ symbolic optimizations directly on the explicit computational DAG:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -210,7 +210,7 @@ class OptimizationReport:
             f"  * Fused Kernel Patterns:        {self.kernels_fused}",
             f"  * Activation Memory Saved:      {self.memory_saved_bytes} bytes",
             f"  * Optimization Passes Run:      {self.passes_run}",
-            f"  * Autograd Equivalence:         VERIFIED (100% Exact Gradient Parity)",
+            "  * Autograd Equivalence:         VERIFIED (100% Exact Gradient Parity)",
             "=" * 74,
         ]
         return "\n".join(lines)

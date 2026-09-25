@@ -13,7 +13,6 @@ Key Highlights:
 """
 from __future__ import annotations
 
-import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
@@ -359,6 +358,7 @@ class CCompiler:
 
             if op == "matmul":
                 self.used_kernels.add("matmul_2d")
+                assert in1_node is not None
                 # Shapes: (M, K) @ (K, N) -> (M, N)
                 m = int(np.prod(in0_node.data.shape[:-1])) if in0_node.data.ndim > 1 else 1
                 k = in0_node.data.shape[-1]
@@ -545,10 +545,10 @@ class CCompiler:
         # 4. Copy final node result to output parameter
         final_node_name = self.node_names[id(self.output)]
         out_len = self.output.data.size
-        self.c_instructions.append(f"\n    /* Copy final activation to output buffer */")
+        self.c_instructions.append("\n    /* Copy final activation to output buffer */")
         self.c_instructions.append(f"    for (int i = 0; i < {out_len}; i++) {{")
         self.c_instructions.append(f"        output[i] = {final_node_name}[i];")
-        self.c_instructions.append(f"    }}")
+        self.c_instructions.append("    }")
 
         # 5. Assemble C Source Code
         total_param_count = sum(arr.size for _, arr in self.param_arrays) + sum(arr.size for _, arr in self.const_arrays)
@@ -608,7 +608,7 @@ class CCompiler:
         sig = (
             f"void {self.model_name}_forward("
             + ", ".join([f"const float* input_{i}" for i in range(len(self.example_input))])
-            + f", float* output)"
+            + ", float* output)"
             if len(self.example_input) > 1
             else f"void {self.model_name}_forward(const float* input, float* output)"
         )
@@ -629,7 +629,6 @@ class CCompiler:
 
         # Optional standalone main harness
         if self.include_main:
-            sample_in_lines = []
             if self.example_input:
                 sample_in = self.example_input[0].data.flatten()
                 elems = [f"{float(x):.7e}f" for x in sample_in]
@@ -646,18 +645,18 @@ class CCompiler:
                 "",
                 f'    printf("=== miniGrad Standalone Embedded C Model [{self.model_name}] ===\\n");',
                 f'    printf("Model Footprint: {total_footprint} bytes (ROM: {total_param_bytes}B, RAM: {total_act_bytes}B)\\n");',
-                f'    printf("Input values (first 5): [ ");',
+                '    printf("Input values (first 5): [ ");',
                 f"    for (int i = 0; i < ({input_size} < 5 ? {input_size} : 5); i++) {{",
-                f'        printf("%.4f ", sample_input[i]);',
+                '        printf("%.4f ", sample_input[i]);',
                 "    }",
-                f'    printf("]\\n");',
+                '    printf("]\\n");',
                 "",
-                f"    /* Run native inference */",
+                "    /* Run native inference */",
                 f"    {self.model_name}_forward(sample_input, output_buffer);",
                 "",
-                f'    printf("Inference complete. Output values:\\n");',
+                '    printf("Inference complete. Output values:\\n");',
                 f"    for (int i = 0; i < {output_size}; i++) {{",
-                f'        printf("  output[%d] = %+.7f\\n", i, output_buffer[i]);',
+                '        printf("  output[%d] = %+.7f\\n", i, output_buffer[i]);',
                 "    }",
                 "    return 0;",
                 "}",

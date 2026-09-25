@@ -12,7 +12,6 @@ Tests:
 """
 import math
 import numpy as np
-import pytest
 
 from minigrad.tensor import Tensor
 from minigrad.graph import no_grad, is_grad_enabled
@@ -374,7 +373,7 @@ def test_apply_lora():
     block = TransformerBlock(embed_dim=16, num_heads=4, dropout=0.0)
 
     # Count params before
-    total_before = len(block.parameters())
+    assert len(block.parameters()) > 0
 
     # Freeze everything
     block.freeze()

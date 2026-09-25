@@ -43,7 +43,7 @@ def demo_analytical_vs_monte_carlo():
     print("P.R.A.M.A.N.A. propagates exact analytical variance through non-linear layers in 1 pass.\n")
 
     np.random.seed(42)
-    in_dim, hidden_dim, out_dim = 4, 8, 2
+    in_dim, _, out_dim = 4, 8, 2
 
     # Distributional Layer
     model = DistributionalLinear(in_dim, out_dim, bias=True)

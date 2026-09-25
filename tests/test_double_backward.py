@@ -9,7 +9,6 @@ Tests:
 - Physics-Informed Neural Network (PINN) PDE residual backpropagation
 """
 import numpy as np
-import pytest
 
 from minigrad.tensor import Tensor
 from minigrad.autograd import grad, hessian

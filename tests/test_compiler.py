@@ -15,8 +15,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-import minigrad
-from minigrad import Tensor, export_c, to_c
+from minigrad import Tensor, export_c
 from minigrad.nn import (
     Linear,
     Sequential,

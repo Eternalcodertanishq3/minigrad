@@ -11,7 +11,7 @@ MAML meta-learning, and curvature/Hessian-vector products.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
+from typing import Dict, List, Optional, Sequence, Set, Tuple, Union
 
 import numpy as np
 
@@ -77,9 +77,10 @@ def _compute_vjp(node: Tensor, g: Tensor) -> Tuple[Optional[Tensor], ...]:
                     p = float(op.split("^", 1)[1])
                 except (ValueError, IndexError):
                     p = 1.0
-            if p == 0:
+            if p is None or p == 0:
                 return (None,)
-            deriv = (a ** (p - 1)) * p
+            p_val = float(p)
+            deriv = (a ** (p_val - 1)) * p_val
             vjp_a = unbroadcast_tensor(g * deriv, a.shape) if a.requires_grad else None
             return (vjp_a,)
         else:
@@ -197,13 +198,14 @@ def _compute_vjp(node: Tensor, g: Tensor) -> Tuple[Optional[Tensor], ...]:
         (a,) = children
         idx = getattr(node, "_ctx", None)
         grad_a = np.zeros(a.shape, dtype=np.float64)
-        np.add.at(grad_a, idx, g.data)
+        if idx is not None:
+            np.add.at(grad_a, idx, g.data)
         vjp_a = Tensor(grad_a, requires_grad=True) if a.requires_grad else None
         return (vjp_a,)
 
     elif op == "stack":
         axis = getattr(node, "_ctx", 0)
-        vjps = []
+        vjps: List[Optional[Tensor]] = []
         for i, child in enumerate(children):
             if child.requires_grad:
                 idx = [slice(None)] * g.data.ndim
@@ -215,18 +217,18 @@ def _compute_vjp(node: Tensor, g: Tensor) -> Tuple[Optional[Tensor], ...]:
 
     elif op == "concat":
         axis = getattr(node, "_ctx", 0)
-        vjps = []
+        vjps_c: List[Optional[Tensor]] = []
         offset = 0
         for child in children:
             length = child.shape[axis]
             if child.requires_grad:
                 idx = [slice(None)] * g.data.ndim
                 idx[axis] = slice(offset, offset + length)
-                vjps.append(g[tuple(idx)])
+                vjps_c.append(g[tuple(idx)])
             else:
-                vjps.append(None)
+                vjps_c.append(None)
             offset += length
-        return tuple(vjps)
+        return tuple(vjps_c)
 
     # Fallback: default to None for unhandled operations
     return tuple(None for _ in children)
@@ -325,8 +327,8 @@ def grad(
         if res is None:
             if not allow_unused:
                 raise RuntimeError(
-                    f"One of the differentiated Tensors appears to not have been used in the graph. "
-                    f"Set allow_unused=True if this is the desired behavior."
+                    "One of the differentiated Tensors appears to not have been used in the graph. "
+                    "Set allow_unused=True if this is the desired behavior."
                 )
             res = Tensor(np.zeros_like(inp.data), requires_grad=create_graph)
         result.append(res)

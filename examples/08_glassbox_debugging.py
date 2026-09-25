@@ -10,7 +10,6 @@ Run: python examples/08_glassbox_debugging.py
 """
 import sys
 import os
-from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -18,8 +17,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from minigrad import (
     Tensor,
     detect_anomaly,
-    explain_gradients,
-    visualize,
     GradientAnomalyError,
 )
 from minigrad.nn import Linear, Sequential, ReLU

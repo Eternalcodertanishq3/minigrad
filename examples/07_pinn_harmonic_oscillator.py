@@ -132,7 +132,7 @@ def main():
     u_true = exact_solution(t_test.flatten())
 
     mse = float(np.mean((u_pred - u_true) ** 2))
-    print(f"\nEvaluation over 100 test points:")
+    print("\nEvaluation over 100 test points:")
     print(f"  Mean Squared Error vs Analytical Truth: {mse:.6f}")
     print(f"  u(0) predicted: {u_pred[0]:.4f} (target: 1.0000)")
     print(f"  u(T/2) predicted: {u_pred[50]:.4f} (target: {u_true[50]:.4f})")

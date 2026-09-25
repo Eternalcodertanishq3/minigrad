@@ -457,7 +457,6 @@ def _run_adjoint_backward(
     """
     opts = options or {}
     n_steps_default = int(opts.get("n_steps", 20))
-    n_params = len(params)
 
     # Augmented derivative function
     def aug_deriv_fn(t: float, s: List[np.ndarray]) -> List[np.ndarray]:
@@ -840,7 +839,7 @@ class NeuralODE(Module):
         Computes terminal state h(T) given initial condition h(0) = x.
         """
         span = t_span if t_span is not None else self.t_span
-        res, telem = odeint(
+        res, telem = odeint(  # type: ignore[misc]
             self.func,
             x,
             span,
@@ -861,7 +860,7 @@ class NeuralODE(Module):
         Returns Tensor of shape (len(t_span), *x.shape).
         """
         span = t_span if t_span is not None else self.t_span
-        res, telem = odeint(
+        res, telem = odeint(  # type: ignore[misc]
             self.func,
             x,
             span,

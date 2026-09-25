@@ -213,16 +213,18 @@ class LogicTensor:
             return self
 
         # Flatten if axis is None
-        if axis is None:
+        if axis is None or not isinstance(axis, int):
             t = t.flatten()
-            axis = -1
+            axis_int = -1
+        else:
+            axis_int = axis
 
         # Compute stable softmin weights: softmax(-t / tau)
         scaled = t * (-1.0 / max(tau, 1e-6))
-        weights = ops.softmax(scaled, axis=axis)
+        weights = ops.softmax(scaled, axis=axis_int)
 
         # Weighted softmin output
-        softmin_val = (weights * t).sum(axis=axis)
+        softmin_val = (weights * t).sum(axis=axis_int)
         return LogicTensor(softmin_val, tnorm=self.tnorm)
 
     def exists(
@@ -241,16 +243,18 @@ class LogicTensor:
         if t.data.size <= 1 and axis is None:
             return self
 
-        if axis is None:
+        if axis is None or not isinstance(axis, int):
             t = t.flatten()
-            axis = -1
+            axis_int = -1
+        else:
+            axis_int = axis
 
         # Compute stable softmax weights: softmax(t / tau)
         scaled = t * (1.0 / max(tau, 1e-6))
-        weights = ops.softmax(scaled, axis=axis)
+        weights = ops.softmax(scaled, axis=axis_int)
 
         # Weighted softmax output
-        softmax_val = (weights * t).sum(axis=axis)
+        softmax_val = (weights * t).sum(axis=axis_int)
         return LogicTensor(softmax_val, tnorm=self.tnorm)
 
     # ── Evaluation & Semantic Loss Metrics ────────────────────────────
@@ -340,7 +344,7 @@ class NeuralRelation(Module):
             y = Tensor(np.asarray(y, dtype=np.float64))
 
         # Concatenate along feature dimension
-        xy = ops.concatenate([x, y], axis=-1)
+        xy = ops.concat([x, y], axis=-1)
         logits = self.net(xy)
         probs = logits.sigmoid()
         return LogicTensor(probs, tnorm=self.tnorm)

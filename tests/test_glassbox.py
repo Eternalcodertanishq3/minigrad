@@ -2,12 +2,10 @@
 tests/test_glassbox.py — Unit and integration tests for Glass-Box Autograd,
 First-NaN Root-Cause Localization, and Interactive HTML/SVG Visualizer.
 """
-import math
 from pathlib import Path
 import numpy as np
 import pytest
 
-import minigrad
 from minigrad import (
     Tensor,
     detect_anomaly,
@@ -15,7 +13,6 @@ from minigrad import (
     visualize,
     collect_telemetry,
     GradientAnomalyError,
-    NodeTelemetry,
 )
 from minigrad.glassbox import is_anomaly_detection_enabled
 from minigrad.nn import Linear, Sequential, ReLU

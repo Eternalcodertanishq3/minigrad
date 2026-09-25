@@ -15,7 +15,7 @@ from pathlib import Path
 # Add project root to sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from minigrad import SUTRA, NeuralODE, odeint, Tensor
+from minigrad import NeuralODE, odeint, Tensor
 from minigrad.graph import topological_sort
 from minigrad.nn import Linear, Sequential, Tanh, MSELoss
 from minigrad.optim import Adam

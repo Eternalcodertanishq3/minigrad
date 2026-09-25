@@ -19,7 +19,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from minigrad import Tensor, export_c
+from minigrad import Tensor
 from minigrad.nn import Sequential, Linear, Tanh, Sigmoid
 from minigrad.optim import Adam
 
@@ -154,7 +154,7 @@ def compile_and_benchmark_native_c(c_file: Path, model, test_input: Tensor):
 
     if c_out is not None:
         diff = abs(py_out - c_out)
-        print(f"\nVerification Results:")
+        print("\nVerification Results:")
         print(f"  * Python Output:   {py_out:.7f}")
         print(f"  * Native C Output: {c_out:.7f}")
         print(f"  * Absolute Error:  {diff:.2e} (Exact Parity!)")

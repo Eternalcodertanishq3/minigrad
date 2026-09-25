@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import numpy as np
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+from typing import List, Optional, Sequence, Tuple, Union
 
 from minigrad.tensor import Tensor
 from minigrad.nn.module import Module
@@ -243,8 +243,8 @@ class SpikingLinear(Module):
         elif x.ndim == 3:
             # Temporal sequence: (T, B, in_features)
             t_steps = x.shape[0]
-            spikes: List[Tensor] = []
-            state: Optional[Tuple[Tensor, Tensor]] = None
+            spikes = []
+            state = None
 
             for t in range(t_steps):
                 current_t = self.linear(x[t])
@@ -403,7 +403,6 @@ class SPANDA:
     DirectEncoder = DirectEncoder
     RateDecoder = RateDecoder
     MembraneDecoder = MembraneDecoder
-    SpandaTelemetry = SpandaTelemetry
 
     @staticmethod
     def evaluate_neuromorphic_energy(
@@ -416,10 +415,6 @@ class SPANDA:
         synaptic operations (SynOps), and hardware energy consumption.
         """
         from minigrad.graph import no_grad
-
-        # Collect spike outputs from all spiking layers
-        spikes_collected: List[np.ndarray] = []
-        weights_collected: List[Tuple[int, int]] = []
 
         with no_grad():
             if sample_input.ndim == 2:
@@ -478,3 +473,6 @@ class SPANDA:
             estimated_snn_energy_pj=snn_pj,
             energy_efficiency_gain=gain,
         )
+
+    SpandaTelemetry = SpandaTelemetry
+

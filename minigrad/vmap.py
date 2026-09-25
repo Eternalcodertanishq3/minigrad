@@ -43,15 +43,15 @@ def _slice_arg(arg: Any, axis: Optional[int], index: int) -> Any:
     if isinstance(arg, Tensor):
         if axis == 0:
             return arg[index]
-        idx = [slice(None)] * arg.ndim
+        idx: List[Any] = [slice(None)] * arg.ndim
         idx[axis] = index
         return arg[tuple(idx)]
     if isinstance(arg, np.ndarray):
         if axis == 0:
             return arg[index]
-        idx = [slice(None)] * arg.ndim
-        idx[axis] = index
-        return arg[tuple(idx)]
+        idx_arr: List[Any] = [slice(None)] * arg.ndim
+        idx_arr[axis] = index
+        return arg[tuple(idx_arr)]
     if isinstance(arg, (list, tuple)) and axis == 0:
         return arg[index]
     return arg
@@ -138,6 +138,7 @@ def vmap(
     @functools.wraps(func)
     def vmapped_fn(*args: Any, **kwargs: Any) -> Any:
         # 1. Normalize in_axes to match positional args
+        axes_list: List[Optional[int]]
         if isinstance(in_axes, int):
             axes_list = [in_axes] * len(args)
         else:

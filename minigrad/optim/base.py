@@ -21,6 +21,7 @@ class Optimizer:
 
     def __init__(self, params: List[Tensor]) -> None:
         self.params = [p for p in params if p.requires_grad]
+        self.lr: float = 0.0
 
     def zero_grad(self) -> None:
         """Zero the gradients of all parameters."""

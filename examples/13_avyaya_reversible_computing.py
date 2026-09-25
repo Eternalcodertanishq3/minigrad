@@ -15,8 +15,7 @@ from pathlib import Path
 # Add project root to sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from minigrad import AVYAYA, ReversibleBlock, ReversibleSequential, Tensor
-from minigrad.graph import topological_sort
+from minigrad import ReversibleBlock, ReversibleSequential, Tensor
 from minigrad.nn import Linear, Sequential, Tanh, GELU, MSELoss
 from minigrad.optim import Adam
 
@@ -73,7 +72,7 @@ def demo_memory_scaling_benchmark():
             ReversibleBlock(Linear(32, 32), Linear(32, 32))
             for _ in range(depth)
         ]
-        model = ReversibleSequential(blocks, is_reversible=True)
+        _ = ReversibleSequential(blocks, is_reversible=True)
 
         # Standard framework stores L activation buffers
         std_bytes = depth * bytes_per_sample

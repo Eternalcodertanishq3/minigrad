@@ -16,7 +16,7 @@ Features:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Tuple, Union
+from typing import Any, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -326,11 +326,10 @@ class DistributionalLinear(Module):
             requires_grad=True,
         )
 
-        if bias:
-            self.bias = Tensor(np.zeros(out_features), requires_grad=True)
-        else:
-            self.bias = None
+        self.bias: Optional[Tensor] = Tensor(np.zeros(out_features), requires_grad=True) if bias else None
 
+        self.weight_log_var: Optional[Tensor] = None
+        self.bias_log_var: Optional[Tensor] = None
         if weight_uncertainty:
             self.weight_log_var = Tensor(
                 np.full((in_features, out_features), init_log_var),
@@ -341,11 +340,6 @@ class DistributionalLinear(Module):
                     np.full(out_features, init_log_var),
                     requires_grad=True,
                 )
-            else:
-                self.bias_log_var = None
-        else:
-            self.weight_log_var = None
-            self.bias_log_var = None
 
     def forward(self, x: Union[DistributionalTensor, Tensor]) -> DistributionalTensor:
         if not isinstance(x, DistributionalTensor):
@@ -451,11 +445,6 @@ class PRAMANA:
     P.R.A.M.A.N.A. — Probabilistic Representation of Analytical Moments
     and Algebraic Noise-aware Autograd.
     """
-    DistributionalTensor = DistributionalTensor
-    DistributionalLinear = DistributionalLinear
-    DistributionalSequential = DistributionalSequential
-    GaussianNLLLoss = GaussianNLLLoss
-    PramanaTelemetry = PramanaTelemetry
 
     @staticmethod
     def evaluate_uncertainty_telemetry(
@@ -490,3 +479,9 @@ class PRAMANA:
             fraction_in_95_ci=ci_coverage,
             total_samples_evaluated=len(in_dist_data) + len(out_dist_data),
         )
+
+    DistributionalTensor = DistributionalTensor
+    DistributionalLinear = DistributionalLinear
+    DistributionalSequential = DistributionalSequential
+    GaussianNLLLoss = GaussianNLLLoss
+    PramanaTelemetry = PramanaTelemetry

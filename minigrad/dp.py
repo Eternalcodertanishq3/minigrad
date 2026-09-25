@@ -11,7 +11,7 @@ Implements the formal Gaussian Mechanism for Differential Privacy:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -78,7 +78,7 @@ def clip_per_sample_gradients(
         raise ValueError(f"max_norm must be strictly positive, got {max_norm}")
 
     is_dict = isinstance(per_sample_grads, dict)
-    if is_dict:
+    if isinstance(per_sample_grads, dict):
         keys = list(per_sample_grads.keys())
         grad_list = [per_sample_grads[k] for k in keys]
     else:
@@ -86,7 +86,7 @@ def clip_per_sample_gradients(
         grad_list = list(per_sample_grads)
 
     if not grad_list:
-        return per_sample_grads, np.array([])
+        return per_sample_grads, np.array([])  # type: ignore[return-value]
 
     batch_size = grad_list[0].shape[0]
 
@@ -147,7 +147,7 @@ def add_dp_noise(
     noise_std = (max_norm * noise_multiplier) / float(batch_size) if noise_multiplier > 0 else 0.0
 
     is_dict = isinstance(clipped_grads, dict)
-    if is_dict:
+    if isinstance(clipped_grads, dict):
         items = list(clipped_grads.items())
     else:
         items = [(str(i), g) for i, g in enumerate(clipped_grads)]

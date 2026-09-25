@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import os
 import sys
-from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -74,11 +73,11 @@ def main():
 
     # Run forward pass through standard MLP
     raw_output = mlp(batch_input)
-    raw_node_count = len(minigrad.topological_sort(raw_output))
+    _ = len(minigrad.topological_sort(raw_output))
 
     # Symbolically optimize the computation graph
     opt_output, report2 = mlp.optimize(batch_input)
-    opt_node_count = len(minigrad.topological_sort(opt_output))
+    _ = len(minigrad.topological_sort(opt_output))
 
     # Print the structured ASCII optimization report
     print("\n" + report2.summary())

@@ -13,7 +13,6 @@ Tests:
 8. test_deterministic_backward_parity (Bit-for-bit equivalence when var=0)
 """
 import numpy as np
-import pytest
 
 from minigrad.nn import Linear
 from minigrad.optim import Adam
@@ -23,7 +22,6 @@ from minigrad.pramana import (
     DistributionalSequential,
     DistributionalTensor,
     GaussianNLLLoss,
-    PramanaTelemetry,
 )
 from minigrad.tensor import Tensor
 
