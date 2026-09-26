@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%" fill="none">
+  <defs>
+    <!-- Brand Color Gradient: Radiant Coral to Cyber Violet -->
+    <linearGradient id="d3-brand" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF5E62" />
+      <stop offset="45%" stop-color="#FF9966" />
+      <stop offset="75%" stop-color="#8B5CF6" />
+      <stop offset="100%" stop-color="#6366F1" />
+    </linearGradient>
+    <radialGradient id="d3-glow" cx="40%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#FF5E62" stop-opacity="0.20" />
+      <stop offset="60%" stop-color="#8B5CF6" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#0C0E17" stop-opacity="0" />
+    </radialGradient>
+    <filter id="d3-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#000000" flood-opacity="0.45" />
+    </filter>
+  </defs>
+
+  <!-- Container Plate (Obsidian Titanium Canvas) -->
+  <rect width="512" height="512" rx="112" fill="#0C0E17" />
+  <rect width="510" height="510" x="1" y="1" rx="111" stroke="rgba(255,255,255,0.08)" stroke-width="2" />
+  <circle cx="256" cy="256" r="210" fill="url(#d3-glow)" />
+
+  <!-- Subtle Harmonic Waveform Background Grid -->
+  <path d="M 80 320 C 140 300, 200 340, 260 320 C 320 300, 380 340, 432 320" stroke="rgba(255,255,255,0.04)" stroke-width="1.5" fill="none" />
+  <path d="M 80 190 C 140 170, 200 210, 260 190 C 320 170, 380 210, 432 190" stroke="rgba(255,255,255,0.04)" stroke-width="1.5" fill="none" />
+
+  <!-- THE SIGNATURE MONOGRAM `m · g` -->
+  <g filter="url(#d3-shadow)">
+    <!-- Letter 'm': Two continuous harmonic arches (Distributional Mean & Variance) -->
+    <!-- Arch 1: x=116 up to 172, down to 228 -->
+    <!-- Arch 2: x=228 up to 284, down to 340 -->
+    <path d="M 120 326
+             L 120 226
+             C 120 188 152 164 184 164
+             C 216 164 240 188 240 222
+             L 240 326"
+          stroke="url(#d3-brand)"
+          stroke-width="36"
+          stroke-linecap="round"
+          stroke-linejoin="round" />
+
+    <!-- Connected Second Arch + Descent into 'g' Bowl -->
+    <path d="M 240 236
+             C 244 188 276 164 308 164
+             C 340 164 366 188 366 226
+             L 366 312
+             C 366 348 338 372 298 372
+             C 260 372 236 348 236 316
+             C 236 284 260 260 296 260
+             L 364 260"
+          stroke="url(#d3-brand)"
+          stroke-width="36"
+          stroke-linecap="round"
+          stroke-linejoin="round" />
+
+    <!-- Calculus Integral / Tangent Loop Tail of 'g' -->
+    <path d="M 366 288
+             L 366 352
+             C 366 394 336 422 284 422
+             C 244 422 216 404 204 386"
+          stroke="url(#d3-brand)"
+          stroke-width="36"
+          stroke-linecap="round"
+          stroke-linejoin="round" />
+
+    <!-- Center Precision Focal Point (The '·' in mini·grad) -->
+    <circle cx="240" cy="128" r="14" fill="#FF9966" />
+    <circle cx="240" cy="128" r="24" stroke="#FF5E62" stroke-width="2" opacity="0.4" />
+  </g>
+</svg>

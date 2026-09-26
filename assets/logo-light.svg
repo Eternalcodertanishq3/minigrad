@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%" fill="none">
+  <defs>
+    <linearGradient id="mg-light-brand" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E11D48" />
+      <stop offset="35%" stop-color="#EA580C" />
+      <stop offset="70%" stop-color="#7C3AED" />
+      <stop offset="100%" stop-color="#4F46E5" />
+    </linearGradient>
+    <radialGradient id="mg-light-ambient" cx="40%" cy="38%" r="65%">
+      <stop offset="0%" stop-color="#FF5E62" stop-opacity="0.10" />
+      <stop offset="55%" stop-color="#8B5CF6" stop-opacity="0.05" />
+      <stop offset="100%" stop-color="#F8FAFC" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <!-- Light Studio Plate -->
+  <rect width="512" height="512" rx="112" fill="#F8FAFC" />
+  <rect width="510" height="510" x="1" y="1" rx="111" stroke="rgba(0,0,0,0.06)" stroke-width="2" />
+  <circle cx="256" cy="256" r="215" fill="url(#mg-light-ambient)" />
+
+  <!-- Harmonic Grid Geometry -->
+  <path d="M 72 324 C 136 304, 196 344, 256 324 C 316 304, 376 344, 440 324" stroke="rgba(0,0,0,0.04)" stroke-width="1.5" fill="none" />
+  <path d="M 72 192 C 136 172, 196 212, 256 192 C 316 172, 376 212, 440 192" stroke="rgba(0,0,0,0.04)" stroke-width="1.5" fill="none" />
+  <circle cx="256" cy="256" r="172" stroke="rgba(0,0,0,0.03)" stroke-width="1" stroke-dasharray="4 6" />
+
+  <!-- Monogram -->
+  <g>
+    <path d="M 120 326 L 120 226 C 120 188 152 164 184 164 C 216 164 240 188 240 222 L 240 326"
+          stroke="url(#mg-light-brand)" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M 240 236 C 244 188 276 164 308 164 C 340 164 366 188 366 226 L 366 312 C 366 348 338 372 298 372 C 260 372 236 348 236 316 C 236 284 260 260 296 260 L 364 260"
+          stroke="url(#mg-light-brand)" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" />
+    <path d="M 366 288 L 366 352 C 366 394 336 422 284 422 C 244 422 216 404 204 386"
+          stroke="url(#mg-light-brand)" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" />
+    <circle cx="240" cy="128" r="14" fill="#EA580C" />
+    <circle cx="240" cy="128" r="24" stroke="#E11D48" stroke-width="2" opacity="0.3" />
+  </g>
+</svg>

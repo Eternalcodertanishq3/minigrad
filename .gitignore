@@ -156,3 +156,6 @@ cython_debug/
 # Compiled binaries
 *.exe
 *.bin
+
+# Scratch scripts
+scratch/

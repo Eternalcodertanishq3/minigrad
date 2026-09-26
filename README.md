@@ -1,6 +1,8 @@
-# miniGrad (तर्क · सूत्र · स्पन्द)
-
 <div align="center">
+
+<img src="assets/logo.svg" width="140" height="140" alt="miniGrad Logo" />
+
+# miniGrad (तर्क · सूत्र · स्पन्द)
 
 [![CI](https://github.com/Eternalcodertanishq3/minigrad/actions/workflows/ci.yml/badge.svg)](https://github.com/Eternalcodertanishq3/minigrad/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/minigrad-framework.svg?color=blue)](https://pypi.org/project/minigrad-framework/)

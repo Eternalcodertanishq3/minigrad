@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%" fill="none">
+  <defs>
+    <linearGradient id="mg-icon-brand" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF5E62" />
+      <stop offset="35%" stop-color="#FF9966" />
+      <stop offset="70%" stop-color="#8B5CF6" />
+      <stop offset="100%" stop-color="#6366F1" />
+    </linearGradient>
+    <filter id="mg-icon-glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <g id="mg-monogram">
+    <!-- Letter 'm': Arch 1 -->
+    <path d="M 120 326
+             L 120 226
+             C 120 188 152 164 184 164
+             C 216 164 240 188 240 222
+             L 240 326"
+          stroke="url(#mg-icon-brand)"
+          stroke-width="36"
+          stroke-linecap="round"
+          stroke-linejoin="round" />
+
+    <!-- Arch 2 + 'g' Bowl -->
+    <path d="M 240 236
+             C 244 188 276 164 308 164
+             C 340 164 366 188 366 226
+             L 366 312
+             C 366 348 338 372 298 372
+             C 260 372 236 348 236 316
+             C 236 284 260 260 296 260
+             L 364 260"
+          stroke="url(#mg-icon-brand)"
+          stroke-width="36"
+          stroke-linecap="round"
+          stroke-linejoin="round" />
+
+    <!-- Integral Tail 'g' -->
+    <path d="M 366 288
+             L 366 352
+             C 366 394 336 422 284 422
+             C 244 422 216 404 204 386"
+          stroke="url(#mg-icon-brand)"
+          stroke-width="36"
+          stroke-linecap="round"
+          stroke-linejoin="round" />
+
+    <!-- Precision Dot -->
+    <circle cx="240" cy="128" r="14" fill="#FF9966" filter="url(#mg-icon-glow)" />
+    <circle cx="240" cy="128" r="24" stroke="#FF5E62" stroke-width="2" opacity="0.45" />
+  </g>
+</svg>
