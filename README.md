@@ -187,7 +187,7 @@ loss.backward()  # Dynamic backward reconstruction: O(1) memory!
 *Sanskrit: प्रमाण (Valid Means of Genuine Knowledge)*  
 **Probabilistic Representation of Analytical Moments & Algebraic Noise-aware Autograd.**
 
-Standard neural networks output uncalibrated point estimates and confidently hallucinate on out-of-distribution inputs. P.R.A.M.A.N.A. introduces a dual-stream computational graph tracking both expectation $\mathbb{E}[X] = \mu$ and variance $\operatorname{Var}[X] = \sigma^2$ through closed-form Goodman product algebra and first-order Taylor moment propagation:
+Standard neural networks output uncalibrated point estimates and confidently hallucinate on out-of-distribution inputs. P.R.A.M.A.N.A. introduces a dual-stream computational graph tracking both expectation $\mathbb{E}[X] = \mu$ and variance $\mathrm{Var}[X] = \sigma^2$ through closed-form Goodman product algebra and first-order Taylor moment propagation:
 $$\sigma_{XY}^2 = \mu_X^2 \sigma_Y^2 + \mu_Y^2 \sigma_X^2 + \sigma_X^2 \sigma_Y^2$$
 Matches 100,000-sample empirical Monte Carlo simulations with $< 0.05\%$ discrepancy while running **$188.6\times$ faster** in a single pass. Automatically detects out-of-distribution hallucinations via a **$1122\times$ variance spike**.
 

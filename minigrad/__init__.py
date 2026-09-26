@@ -17,7 +17,7 @@ Usage:
     optimizer = Adam(model.parameters(), lr=1e-3)
 """
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 from minigrad.tensor import Tensor
 from minigrad.graph import topological_sort, trace, print_graph
