@@ -12,8 +12,9 @@ T.A.R.K.A. (Tensorized Algebraic Reasoning and Knowledge-grounded Autograd)
    backpropagation gradients directly on rule-violating instances.
 """
 import sys
-import numpy as np
 from pathlib import Path
+
+import numpy as np
 
 # Add project root to sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -25,12 +26,12 @@ from minigrad import (
     SemanticLoss,
     Tensor,
 )
-from minigrad.tarka import (
-    TransitivityAxiom,
-    MutualExclusionAxiom,
-)
-from minigrad.nn import Module, Linear, Sequential, ReLU, MSELoss
+from minigrad.nn import Linear, Module, MSELoss, ReLU, Sequential
 from minigrad.optim import Adam
+from minigrad.tarka import (
+    MutualExclusionAxiom,
+    TransitivityAxiom,
+)
 
 
 def print_banner(title: str):

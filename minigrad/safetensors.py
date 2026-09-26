@@ -24,7 +24,6 @@ import numpy as np
 
 from minigrad.tensor import Tensor
 
-
 # ── Dtype Mappings ──────────────────────────────────────────────────
 
 DTYPE_TO_STR: Dict[np.dtype, str] = {

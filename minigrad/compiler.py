@@ -18,9 +18,8 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import numpy as np
 
-from minigrad.tensor import Tensor
 from minigrad.graph import topological_sort
-
+from minigrad.tensor import Tensor
 
 # ── ANSI C Kernel Library ──────────────────────────────────────────
 

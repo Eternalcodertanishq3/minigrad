@@ -12,16 +12,18 @@ Expected accuracy: ~99% after 10 epochs
 Run: python examples/05_mnist_cnn.py
 Note: This takes longer than the MLP due to convolution operations.
 """
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import numpy as np
+
 from minigrad import Tensor
-from minigrad.nn import Sequential, Conv2D, Linear, ReLU, Flatten
+from minigrad.data import DataLoader, MNISTDataset
+from minigrad.nn import Conv2D, Flatten, Linear, ReLU, Sequential
 from minigrad.nn.loss import CrossEntropyLoss
 from minigrad.optim import Adam
-from minigrad.data import MNISTDataset, DataLoader
 from minigrad.utils import count_parameters
 
 

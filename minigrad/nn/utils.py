@@ -6,8 +6,9 @@ LSTMs, and Transformers where exploding gradients are common.
 """
 from __future__ import annotations
 
-import numpy as np
 from typing import List
+
+import numpy as np
 
 from minigrad.tensor import Tensor
 

@@ -13,15 +13,14 @@ Tests:
 """
 import numpy as np
 
-from minigrad.tensor import Tensor
+from minigrad.compiler import export_c
 from minigrad.graph import topological_sort
 from minigrad.graph_opt import (
-    optimize_graph,
     OptimizationReport,
+    optimize_graph,
 )
-from minigrad.nn import Linear, Sequential, ReLU
-from minigrad.compiler import export_c
-
+from minigrad.nn import Linear, ReLU, Sequential
+from minigrad.tensor import Tensor
 
 # ==============================================================================
 # 1. Algebraic Identities Elimination

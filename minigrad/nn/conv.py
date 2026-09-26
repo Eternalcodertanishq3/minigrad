@@ -10,11 +10,12 @@ col2im  : The reverse operation for the backward pass
 """
 from __future__ import annotations
 
-import numpy as np
 from typing import Tuple
 
-from minigrad.tensor import Tensor
+import numpy as np
+
 from minigrad.nn.module import Module
+from minigrad.tensor import Tensor
 
 
 def im2col(x: np.ndarray, kernel_h: int, kernel_w: int, stride: int = 1, padding: int = 0) -> np.ndarray:

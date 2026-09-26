@@ -24,7 +24,6 @@ from minigrad.graph import no_grad
 from minigrad.nn.module import Module
 from minigrad.tensor import Tensor
 
-
 # ── Telemetry Dataclass ──────────────────────────────────────────────
 
 @dataclass

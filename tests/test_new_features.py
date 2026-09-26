@@ -11,14 +11,15 @@ Tests:
 - Einsum autograd operation
 """
 import math
+
 import numpy as np
 
-from minigrad.tensor import Tensor
-from minigrad.graph import no_grad, is_grad_enabled
+from minigrad.graph import is_grad_enabled, no_grad
 from minigrad.nn import Embedding, LayerNorm
 from minigrad.nn.utils import clip_grad_norm_, clip_grad_value_
-from minigrad.optim import SGD, StepLR, CosineAnnealingLR, ExponentialLR
 from minigrad.ops import einsum
+from minigrad.optim import SGD, CosineAnnealingLR, ExponentialLR, StepLR
+from minigrad.tensor import Tensor
 
 
 def test_pow_negative_exponent_zero_base():

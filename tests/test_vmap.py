@@ -16,23 +16,22 @@ import numpy as np
 
 import minigrad
 from minigrad import Tensor
-from minigrad.nn import Linear, Sequential, ReLU
-from minigrad.optim import Adam
-from minigrad.vmap import (
-    vmap,
-    make_functional,
-    per_sample_gradients,
-    jacrev,
-    batched_jacobian,
-)
 from minigrad.dp import (
-    clip_per_sample_gradients,
+    PrivacyTelemetry,
     add_dp_noise,
     apply_dp_gradients,
+    clip_per_sample_gradients,
     compute_dp_sgd_step,
-    PrivacyTelemetry,
 )
-
+from minigrad.nn import Linear, ReLU, Sequential
+from minigrad.optim import Adam
+from minigrad.vmap import (
+    batched_jacobian,
+    jacrev,
+    make_functional,
+    per_sample_gradients,
+    vmap,
+)
 
 # ==============================================================================
 # 1. Core vmap Functional Vectorization

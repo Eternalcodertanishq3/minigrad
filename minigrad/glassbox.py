@@ -17,9 +17,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
-from minigrad.tensor import Tensor
 from minigrad.graph import topological_sort
-
+from minigrad.tensor import Tensor
 
 # ── Global Anomaly Detection State ───────────────────────────────────
 

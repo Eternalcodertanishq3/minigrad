@@ -15,11 +15,10 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
-from minigrad.tensor import Tensor
-from minigrad.ops import stack
 from minigrad.autograd import grad
 from minigrad.nn.module import Module
-
+from minigrad.ops import stack
+from minigrad.tensor import Tensor
 
 # ── Helper Utilities ────────────────────────────────────────────────
 

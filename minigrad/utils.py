@@ -6,8 +6,9 @@ to make training and debugging easier.
 """
 from __future__ import annotations
 
+from typing import Callable, List, Optional
+
 import numpy as np
-from typing import Callable, Optional, List
 
 from minigrad.tensor import Tensor
 

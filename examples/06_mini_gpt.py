@@ -14,23 +14,23 @@ Architecture:
 
 This proves miniGrad can train a real Transformer from scratch.
 """
-import sys
 import os
+import sys
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import numpy as np
 
-from minigrad.tensor import Tensor
-from minigrad.nn.module import Module
-from minigrad.nn.linear import Linear
+from minigrad.graph import no_grad
+from minigrad.nn.attention import TransformerBlock
 from minigrad.nn.embedding import Embedding
 from minigrad.nn.layernorm import LayerNorm
-from minigrad.nn.attention import TransformerBlock
+from minigrad.nn.linear import Linear
 from minigrad.nn.loss import CrossEntropyLoss
+from minigrad.nn.module import Module
 from minigrad.optim.adam import AdamW
-from minigrad.graph import no_grad
+from minigrad.tensor import Tensor
 
 # ── Hyperparameters ──────────────────────────────────────────────────
 

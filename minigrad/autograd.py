@@ -17,7 +17,6 @@ import numpy as np
 
 from minigrad.tensor import Tensor
 
-
 # ── VJP Unbroadcasting Helper ────────────────────────────────────────
 
 def unbroadcast_tensor(t: Tensor, target_shape: Tuple[int, ...]) -> Tensor:

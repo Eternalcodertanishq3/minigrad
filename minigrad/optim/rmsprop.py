@@ -10,11 +10,12 @@ COURSERA: Neural Networks for Machine Learning
 """
 from __future__ import annotations
 
-import numpy as np
 from typing import List
 
-from minigrad.tensor import Tensor
+import numpy as np
+
 from minigrad.optim.base import Optimizer
+from minigrad.tensor import Tensor
 
 
 class RMSprop(Optimizer):

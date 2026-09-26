@@ -15,12 +15,13 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from minigrad import Tensor
-from minigrad.nn import Sequential, Linear, Tanh, Sigmoid
+from minigrad.nn import Linear, Sequential, Sigmoid, Tanh
 from minigrad.optim import Adam
 
 
@@ -125,10 +126,12 @@ def compile_and_benchmark_native_c(c_file: Path, model, test_input: Tensor):
 
     print(f"Compiling with {Path(compiler).name}:")
     compile_cmd = [compiler, "-O3", str(c_file), "-o", str(exe_file)]
+    if os.name != "nt":
+        compile_cmd.append("-lm")
     print(f"  $ {' '.join(compile_cmd)}")
 
     t0 = time.perf_counter()
-    res = subprocess.run(compile_cmd, capture_output=True, text=True)
+    res = subprocess.run(compile_cmd, capture_output=True, text=True, check=False)
     compile_time = (time.perf_counter() - t0) * 1000
 
     if res.returncode != 0:
@@ -141,7 +144,7 @@ def compile_and_benchmark_native_c(c_file: Path, model, test_input: Tensor):
 
     print("\nExecuting native C inference:")
     print("-" * 70)
-    run_res = subprocess.run([str(exe_file)], capture_output=True, text=True)
+    run_res = subprocess.run([str(exe_file)], capture_output=True, text=True, check=False)
     print(run_res.stdout.strip())
     print("-" * 70)
 

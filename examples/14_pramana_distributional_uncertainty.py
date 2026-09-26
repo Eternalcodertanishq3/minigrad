@@ -14,17 +14,18 @@ P.R.A.M.A.N.A. (Probabilistic Representation of Analytical Moments and Algebraic
 """
 import sys
 import time
-import numpy as np
 from pathlib import Path
+
+import numpy as np
 
 # Add project root to sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from minigrad import (
     PRAMANA,
-    DistributionalTensor,
     DistributionalLinear,
     DistributionalSequential,
+    DistributionalTensor,
     GaussianNLLLoss,
     Tensor,
 )

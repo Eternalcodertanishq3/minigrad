@@ -11,16 +11,15 @@ from minigrad import (
     SemanticLoss,
     Tensor,
 )
+from minigrad.nn import Linear, MSELoss, ReLU, Sequential
+from minigrad.optim import Adam
 from minigrad.tarka import (
+    CustomAxiom,
+    MutualExclusionAxiom,
+    SymmetryAxiom,
     TNorm,
     TransitivityAxiom,
-    SymmetryAxiom,
-    MutualExclusionAxiom,
-    CustomAxiom,
 )
-from minigrad.nn import Linear, Sequential, ReLU, MSELoss
-from minigrad.optim import Adam
-
 
 # ── 1. T-Norm Truth Tables & Exact Algebra ─────────────────────────────
 

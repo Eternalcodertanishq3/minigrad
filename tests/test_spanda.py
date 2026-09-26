@@ -6,20 +6,19 @@ import numpy as np
 
 from minigrad import (
     SPANDA,
-    surrogate_spike,
     LIFCell,
     LIFLayer,
+    RateDecoder,
+    RateEncoder,
+    SpandaTelemetry,
     SpikingLinear,
     SpikingSequential,
-    RateEncoder,
-    RateDecoder,
-    SpandaTelemetry,
     Tensor,
+    surrogate_spike,
 )
-from minigrad.spanda import SurrogateType
 from minigrad.nn import MSELoss
 from minigrad.optim import Adam
-
+from minigrad.spanda import SurrogateType
 
 # ── 1. Surrogate Spike Operator & Surrogate Autograd ──────────────────
 

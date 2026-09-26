@@ -9,14 +9,15 @@ A.V.Y.A.Y.A. (Adaptive Volume-preserving Yield-lossless Activation-inverting Y-r
 3. Training an Ultra-Deep 50-Layer Network: Seamless optimization with Adam and zero forward caching.
 """
 import sys
-import numpy as np
 from pathlib import Path
+
+import numpy as np
 
 # Add project root to sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from minigrad import ReversibleBlock, ReversibleSequential, Tensor
-from minigrad.nn import Linear, Sequential, Tanh, GELU, MSELoss
+from minigrad.nn import GELU, Linear, MSELoss, Sequential, Tanh
 from minigrad.optim import Adam
 
 

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """
 test_optim.py — Optimizer step parity tests vs PyTorch.
 
@@ -7,8 +8,9 @@ to PyTorch optimizers given the same gradients and hyperparameters.
 
 Run: pytest tests/test_optim.py -v
 """
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import numpy as np
@@ -23,6 +25,7 @@ except ImportError:
     nn = None
 
 import pytest
+
 pytestmark = pytest.mark.skipif(not HAS_TORCH, reason="PyTorch not installed")
 
 from minigrad import Tensor
@@ -178,6 +181,6 @@ if __name__ == "__main__":
             t()
             print(f"  PASS: {t.__name__}")
             passed += 1
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"  FAIL: {t.__name__}: {e}")
     print(f"\n{passed}/{len(tests)} tests passed")

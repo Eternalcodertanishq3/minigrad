@@ -9,15 +9,16 @@ S.U.T.R.A. (State-space Unified Time-continuous Runge-Kutta Adjoint)
 3. Continuous Trajectory Learning: Fitting non-linear 2D spiral dynamics with NeuralODE and Adam.
 """
 import sys
-import numpy as np
 from pathlib import Path
+
+import numpy as np
 
 # Add project root to sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from minigrad import NeuralODE, odeint, Tensor
+from minigrad import NeuralODE, Tensor, odeint
 from minigrad.graph import topological_sort
-from minigrad.nn import Linear, Sequential, Tanh, MSELoss
+from minigrad.nn import Linear, MSELoss, Sequential, Tanh
 from minigrad.optim import Adam
 
 
@@ -108,7 +109,7 @@ def demo_spiral_trajectory_learning():
 
     # True system: 2D spiral dx/dt = -0.1*x - y, dy/dt = x - 0.1*y
     A_true = np.array([[-0.1, -1.0], [1.0, -0.1]])
-    
+
     # Generate batch of 8 initial conditions on a circle of radius 1.5
     angles = np.linspace(0, 2 * np.pi, 8, endpoint=False)
     x0_data = np.stack([1.5 * np.cos(angles), 1.5 * np.sin(angles)], axis=1)

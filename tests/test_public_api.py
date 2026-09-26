@@ -4,22 +4,22 @@ from __future__ import annotations
 def test_nn_public_exports():
     from minigrad.nn import (
         BCEWithLogitsLoss,
-        Dropout2D,
-        NLLLoss,
-        NeuralODE,
-        ReversibleBlock,
-        ReversibleSequential,
         DistributionalLinear,
         DistributionalSequential,
+        Dropout2D,
         GaussianNLLLoss,
-        NeuralPredicate,
-        NeuralRelation,
-        SemanticLoss,
         LIFCell,
         LIFLayer,
+        MembraneDecoder,
+        NeuralODE,
+        NeuralPredicate,
+        NeuralRelation,
+        NLLLoss,
+        ReversibleBlock,
+        ReversibleSequential,
+        SemanticLoss,
         SpikingLinear,
         SpikingSequential,
-        MembraneDecoder,
     )
 
     assert BCEWithLogitsLoss.__name__ == "BCEWithLogitsLoss"
@@ -42,7 +42,7 @@ def test_nn_public_exports():
 
 
 def test_top_level_sutra_exports():
-    from minigrad import SUTRA, NeuralODE, odeint, AdaptiveStepTelemetry
+    from minigrad import SUTRA, AdaptiveStepTelemetry, NeuralODE, odeint
 
     assert callable(odeint)
     assert NeuralODE.__name__ == "NeuralODE"
@@ -53,9 +53,9 @@ def test_top_level_sutra_exports():
 def test_top_level_avyaya_exports():
     from minigrad import (
         AVYAYA,
+        ReconstructionTelemetry,
         ReversibleBlock,
         ReversibleSequential,
-        ReconstructionTelemetry,
     )
 
     assert ReversibleBlock.__name__ == "ReversibleBlock"
@@ -67,9 +67,9 @@ def test_top_level_avyaya_exports():
 def test_top_level_pramana_exports():
     from minigrad import (
         PRAMANA,
-        DistributionalTensor,
         DistributionalLinear,
         DistributionalSequential,
+        DistributionalTensor,
         GaussianNLLLoss,
         PramanaTelemetry,
     )
@@ -107,16 +107,16 @@ def test_top_level_tarka_exports():
 def test_top_level_spanda_exports():
     from minigrad import (
         SPANDA,
-        surrogate_spike,
+        DirectEncoder,
         LIFCell,
         LIFLayer,
+        MembraneDecoder,
+        RateDecoder,
+        RateEncoder,
+        SpandaTelemetry,
         SpikingLinear,
         SpikingSequential,
-        RateEncoder,
-        DirectEncoder,
-        RateDecoder,
-        MembraneDecoder,
-        SpandaTelemetry,
+        surrogate_spike,
     )
 
     assert callable(surrogate_spike)

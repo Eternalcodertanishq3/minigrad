@@ -12,18 +12,19 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
+
 import numpy as np
 import pytest
 
 from minigrad import Tensor, export_c
 from minigrad.nn import (
-    Linear,
-    Sequential,
-    ReLU,
-    Sigmoid,
-    Tanh,
     GELU,
     LayerNorm,
+    Linear,
+    ReLU,
+    Sequential,
+    Sigmoid,
+    Tanh,
 )
 
 
@@ -37,6 +38,14 @@ def _find_c_compiler() -> str | None:
 
 
 CLANG_OR_GCC = _find_c_compiler()
+
+
+def _compile_c(c_file: Path, exe_file: Path) -> subprocess.CompletedProcess:
+    assert CLANG_OR_GCC is not None
+    cmd = [CLANG_OR_GCC, "-O3", str(c_file), "-o", str(exe_file)]
+    if os.name != "nt":
+        cmd.append("-lm")
+    return subprocess.run(cmd, capture_output=True, text=True, check=False)
 
 
 def test_zero_dynamic_memory_allocation():
@@ -100,13 +109,12 @@ def test_c_export_mlp_parity(tmp_path: Path):
     assert c_file.exists()
 
     # Compile with native compiler
-    compile_cmd = [CLANG_OR_GCC, "-O3", str(c_file), "-o", str(exe_file)]
-    res = subprocess.run(compile_cmd, capture_output=True, text=True)
+    res = _compile_c(c_file, exe_file)
     assert res.returncode == 0, f"Compilation failed: {res.stderr}"
     assert exe_file.exists()
 
     # Run native executable
-    run_res = subprocess.run([str(exe_file)], capture_output=True, text=True)
+    run_res = subprocess.run([str(exe_file)], capture_output=True, text=True, check=False)
     assert run_res.returncode == 0, f"Execution failed: {run_res.stderr}"
 
     # Parse output: "output[0] = +0.1234567"
@@ -140,10 +148,10 @@ def test_c_export_various_activations(tmp_path: Path):
 
     export_c(model, x, filename=c_file, include_main=True, model_name="act_test")
 
-    res = subprocess.run([CLANG_OR_GCC, "-O3", str(c_file), "-o", str(exe_file)], capture_output=True, text=True)
+    res = _compile_c(c_file, exe_file)
     assert res.returncode == 0, f"Compilation failed: {res.stderr}"
 
-    run_res = subprocess.run([str(exe_file)], capture_output=True, text=True)
+    run_res = subprocess.run([str(exe_file)], capture_output=True, text=True, check=False)
     assert run_res.returncode == 0
 
     c_outputs = []
@@ -172,10 +180,10 @@ def test_c_export_layernorm(tmp_path: Path):
 
     export_c(model, x, filename=c_file, include_main=True, model_name="ln_test")
 
-    res = subprocess.run([CLANG_OR_GCC, "-O3", str(c_file), "-o", str(exe_file)], capture_output=True, text=True)
+    res = _compile_c(c_file, exe_file)
     assert res.returncode == 0, f"Compilation failed: {res.stderr}"
 
-    run_res = subprocess.run([str(exe_file)], capture_output=True, text=True)
+    run_res = subprocess.run([str(exe_file)], capture_output=True, text=True, check=False)
     assert run_res.returncode == 0
 
     c_outputs = []

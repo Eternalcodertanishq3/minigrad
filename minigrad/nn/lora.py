@@ -23,9 +23,9 @@ from typing import List, Optional
 
 import numpy as np
 
-from minigrad.tensor import Tensor
-from minigrad.nn.module import Module
 from minigrad.nn.linear import Linear
+from minigrad.nn.module import Module
+from minigrad.tensor import Tensor
 
 
 class LoRALinear(Module):

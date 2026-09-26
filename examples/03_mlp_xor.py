@@ -15,13 +15,15 @@ Loss: Binary Cross Entropy
 
 Run: python examples/03_mlp_xor.py
 """
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import numpy as np
+
 from minigrad import Tensor
-from minigrad.nn import Module, Linear, ReLU, Sigmoid
+from minigrad.nn import Linear, Module, ReLU, Sigmoid
 from minigrad.nn.loss import BCELoss
 from minigrad.optim import SGD
 

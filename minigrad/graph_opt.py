@@ -17,9 +17,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from minigrad.tensor import Tensor
 from minigrad.graph import topological_sort
-
+from minigrad.tensor import Tensor
 
 # ── Fused Operators with Exact Autograd Backward Closures ───────────
 

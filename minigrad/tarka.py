@@ -12,14 +12,14 @@ Neuro-Symbolic Differentiable First-Order Logic & Axiomatic Autograd Constraints
 """
 from __future__ import annotations
 
-import numpy as np
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
-from minigrad.tensor import Tensor
-from minigrad.nn.module import Module
-from minigrad import ops
+import numpy as np
 
+from minigrad import ops
+from minigrad.nn.module import Module
+from minigrad.tensor import Tensor
 
 # ── T-Norm Logic Systems ─────────────────────────────────────────────
 

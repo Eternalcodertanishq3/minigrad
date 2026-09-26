@@ -11,15 +11,15 @@ Neuromorphic Event-Driven Spiking Dynamics & Surrogate-Gradient SNNs:
 """
 from __future__ import annotations
 
-import numpy as np
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple, Union
 
-from minigrad.tensor import Tensor
-from minigrad.nn.module import Module
-from minigrad.nn.linear import Linear
-from minigrad import ops
+import numpy as np
 
+from minigrad import ops
+from minigrad.nn.linear import Linear
+from minigrad.nn.module import Module
+from minigrad.tensor import Tensor
 
 # ── Surrogate Gradient Functions ─────────────────────────────────────
 

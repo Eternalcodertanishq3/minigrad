@@ -5,10 +5,10 @@ Allows composing layers as a pipeline: output = layer_n(...(layer_2(layer_1(inpu
 """
 from __future__ import annotations
 
-from typing import List, Iterator
+from typing import Iterator, List
 
-from minigrad.tensor import Tensor
 from minigrad.nn.module import Module
+from minigrad.tensor import Tensor
 
 
 class Sequential(Module):

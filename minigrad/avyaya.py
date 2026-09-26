@@ -24,7 +24,6 @@ from minigrad.nn.module import Module
 from minigrad.ops import concat
 from minigrad.tensor import Tensor
 
-
 # ── Telemetry Dataclass ──────────────────────────────────────────────
 
 @dataclass

@@ -16,11 +16,12 @@ Reference: "Adam: A Method for Stochastic Optimization"
 """
 from __future__ import annotations
 
-import numpy as np
 from typing import List
 
-from minigrad.tensor import Tensor
+import numpy as np
+
 from minigrad.optim.base import Optimizer
+from minigrad.tensor import Tensor
 
 
 class Adam(Optimizer):

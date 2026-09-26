@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from minigrad.tensor import Tensor
 from minigrad.nn.module import Module
+from minigrad.tensor import Tensor
 
 
 class Embedding(Module):
@@ -45,7 +45,7 @@ class Embedding(Module):
         # Use integer indices for lookup
         idx = indices.data.astype(np.intp)
         out_data = self.weight.data[idx]
-        
+
         out = Tensor(
             out_data,
             requires_grad=self.weight.requires_grad,

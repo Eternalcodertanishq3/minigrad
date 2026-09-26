@@ -12,13 +12,14 @@ from __future__ import annotations
 
 import os
 import sys
+
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import minigrad
-from minigrad import Tensor, optimize_graph, export_c
-from minigrad.nn import Linear, Sequential, ReLU
+from minigrad import Tensor, export_c, optimize_graph
+from minigrad.nn import Linear, ReLU, Sequential
 
 
 def main():

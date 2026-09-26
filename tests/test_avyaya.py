@@ -20,7 +20,6 @@ from minigrad.nn import GELU, LayerNorm, Linear, MSELoss, ReLU, Sequential, Tanh
 from minigrad.optim import Adam
 from minigrad.tensor import Tensor
 
-
 # ── 1. Exact Algebraic Reversibility ─────────────────────────────────
 
 def test_exact_algebraic_reversibility():

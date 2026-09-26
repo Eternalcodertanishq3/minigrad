@@ -5,8 +5,9 @@ Common transforms for normalizing and converting data before feeding to models.
 """
 from __future__ import annotations
 
-import numpy as np
 from typing import List
+
+import numpy as np
 
 
 class Transform:

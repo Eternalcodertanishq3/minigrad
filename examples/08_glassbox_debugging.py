@@ -8,18 +8,19 @@ This example showcases Pillar 1 of miniGrad's innovations:
 
 Run: python examples/08_glassbox_debugging.py
 """
-import sys
 import os
+import sys
+
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from minigrad import (
+    GradientAnomalyError,
     Tensor,
     detect_anomaly,
-    GradientAnomalyError,
 )
-from minigrad.nn import Linear, Sequential, ReLU
+from minigrad.nn import Linear, ReLU, Sequential
 
 
 def demo_healthy_telemetry():

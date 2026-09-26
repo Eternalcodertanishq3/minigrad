@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """
 test_ops.py — Parity tests: miniGrad ops vs PyTorch.
 
@@ -7,8 +8,9 @@ numerical correctness to 1e-6 precision.
 
 Run: pytest tests/test_ops.py -v
 """
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import numpy as np
@@ -24,10 +26,10 @@ except ImportError:
     F = None
 
 import pytest
+
 pytestmark = pytest.mark.skipif(not HAS_TORCH, reason="PyTorch not installed")
 
 from minigrad import Tensor
-
 
 # ---------------------------------------------------------------------------
 # Helper: compare Tensor and torch.Tensor gradients
@@ -496,7 +498,7 @@ if __name__ == "__main__":
         except AssertionError as e:
             print(f"  FAIL: {fn.__name__}: {e}")
             failed += 1
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"  ERROR: {fn.__name__}: {e}")
             failed += 1
 

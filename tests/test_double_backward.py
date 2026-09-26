@@ -10,8 +10,8 @@ Tests:
 """
 import numpy as np
 
-from minigrad.tensor import Tensor
 from minigrad.autograd import grad, hessian
+from minigrad.tensor import Tensor
 
 
 def test_scalar_polynomial_double_backward():

@@ -9,8 +9,9 @@ This is exactly how PyTorch's autograd works — just in pure Python/NumPy.
 """
 from __future__ import annotations
 
+from typing import Any, Callable, List, Optional, Sequence, Set, Tuple, Union
+
 import numpy as np
-from typing import Set, Tuple, Callable, Union, Optional, List, Any, Sequence
 
 # Type alias for convenience
 ArrayLike = Union[np.ndarray, list, tuple, float, int]
@@ -504,9 +505,9 @@ class Tensor:
             retain_graph: If False, the graph used to compute the grads will be freed.
         """
         from minigrad.glassbox import (
-            is_anomaly_detection_enabled,
-            diagnose_root_cause,
             GradientAnomalyError,
+            diagnose_root_cause,
+            is_anomaly_detection_enabled,
         )
 
         anomaly_check = is_anomaly_detection_enabled()

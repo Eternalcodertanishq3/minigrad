@@ -27,7 +27,6 @@ from minigrad.graph import no_grad
 from minigrad.nn.module import Module
 from minigrad.tensor import Tensor
 
-
 # ── Telemetry Dataclass ──────────────────────────────────────────────
 
 @dataclass
@@ -153,7 +152,7 @@ def _wrap_ode_func(func: Union[Module, Callable]) -> Callable[[float, Any], Any]
                     return lambda t, y: func(t, y)
                 else:
                     return lambda t, y: func(y, t)
-        except Exception:
+        except (TypeError, ValueError):
             return lambda t, y: func(y)
 
     try:
@@ -169,7 +168,7 @@ def _wrap_ode_func(func: Union[Module, Callable]) -> Callable[[float, Any], Any]
                 return lambda t, y: func(y, t)
             else:
                 return lambda t, y: func(t, y)
-    except Exception:
+    except (TypeError, ValueError):
         pass
 
     def wrapper(t: float, y: Any) -> Any:

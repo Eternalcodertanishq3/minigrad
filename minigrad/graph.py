@@ -6,8 +6,8 @@ cycle detection for the dynamic computation graph built by Tensor operations.
 """
 from __future__ import annotations
 
-from typing import List, Set, Dict, Any
 from collections import defaultdict
+from typing import Any, Dict, List, Set
 
 from minigrad.tensor import Tensor
 
@@ -146,11 +146,11 @@ def is_grad_enabled() -> bool:
 
 class no_grad:
     """Context manager and decorator that disables gradient computation.
-    
+
     Usage:
         with no_grad():
             out = model(x)  # No graph built
-        
+
         @no_grad()
         def evaluate(model, data):
             return model(data)
@@ -160,11 +160,11 @@ class no_grad:
         self._prev = _grad_enabled
         _grad_enabled = False
         return self
-    
+
     def __exit__(self, *args):
         global _grad_enabled
         _grad_enabled = self._prev
-    
+
     def __call__(self, func):
         from functools import wraps
         @wraps(func)

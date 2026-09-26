@@ -10,8 +10,9 @@ the computation graph.
 """
 from __future__ import annotations
 
+from typing import Any, List, Optional, Sequence, Tuple, Union
+
 import numpy as np
-from typing import Any, Tuple, Optional, Union, Sequence, List
 
 from minigrad.tensor import Tensor
 

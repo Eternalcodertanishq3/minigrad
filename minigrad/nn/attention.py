@@ -11,14 +11,15 @@ Reference: "Attention Is All You Need" (Vaswani et al., 2017)
 from __future__ import annotations
 
 import math
+
 import numpy as np
 
-from minigrad.tensor import Tensor
-from minigrad.nn.module import Module
-from minigrad.nn.linear import Linear
-from minigrad.nn.layernorm import LayerNorm
 from minigrad.nn.dropout import Dropout
-from minigrad.ops import softmax, einsum
+from minigrad.nn.layernorm import LayerNorm
+from minigrad.nn.linear import Linear
+from minigrad.nn.module import Module
+from minigrad.ops import einsum, softmax
+from minigrad.tensor import Tensor
 
 
 class MultiHeadAttention(Module):

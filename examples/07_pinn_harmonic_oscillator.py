@@ -13,20 +13,19 @@ A neural network u_θ(t) is trained entirely by minimizing:
 This demonstrates miniGrad's higher-order automatic differentiation (`grad` with `create_graph=True`),
 solving differential equations without labeled training data.
 """
-import sys
 import os
+import sys
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import numpy as np
 
-from minigrad.tensor import Tensor
-from minigrad.nn.module import Module
-from minigrad.nn.linear import Linear
-from minigrad.optim.adam import Adam
 from minigrad.autograd import grad
-
+from minigrad.nn.linear import Linear
+from minigrad.nn.module import Module
+from minigrad.optim.adam import Adam
+from minigrad.tensor import Tensor
 
 # ── Physical System Parameters ───────────────────────────────────────
 

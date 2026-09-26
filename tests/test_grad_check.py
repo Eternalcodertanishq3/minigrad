@@ -7,11 +7,13 @@ its own autograd engine.
 
 Run: pytest tests/test_grad_check.py -v
 """
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import numpy as np
+
 from minigrad import Tensor
 from minigrad.utils import grad_check
 
@@ -191,6 +193,6 @@ if __name__ == "__main__":
                 passed += 1
             else:
                 print(f"  FAIL: {t.__name__}")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"  FAIL: {t.__name__}: {e}")
     print(f"\n{passed}/{len(tests)} gradient checks passed")

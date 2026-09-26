@@ -6,8 +6,8 @@ that downloads and loads the MNIST dataset from Yann LeCun's website.
 """
 from __future__ import annotations
 
-import os
 import gzip
+import os
 import struct
 import urllib.request
 from typing import Tuple
@@ -77,7 +77,7 @@ class MNISTDataset(Dataset):
                 try:
                     urllib.request.urlretrieve(url, filepath)
                     print(f"Saved to {filepath}")
-                except Exception:
+                except (urllib.error.URLError, OSError, TimeoutError):
                     # Fallback mirror
                     fallback_url = f"https://ossci-datasets.s3.amazonaws.com/mnist/{filename}"
                     print("Retrying from mirror...")

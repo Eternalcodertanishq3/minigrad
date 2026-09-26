@@ -15,8 +15,8 @@ from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
-from minigrad.tensor import Tensor
 from minigrad.nn.module import Module
+from minigrad.tensor import Tensor
 
 
 @dataclass

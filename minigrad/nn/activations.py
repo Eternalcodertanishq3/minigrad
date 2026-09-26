@@ -7,8 +7,8 @@ universal function approximators.
 """
 from __future__ import annotations
 
-from minigrad.tensor import Tensor
 from minigrad.nn.module import Module
+from minigrad.tensor import Tensor
 
 
 class ReLU(Module):

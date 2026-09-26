@@ -25,7 +25,6 @@ from minigrad.pramana import (
 )
 from minigrad.tensor import Tensor
 
-
 # ── 1. Analytical Moment Algebra vs Monte Carlo Simulation ───────────
 
 def test_distributional_tensor_algebra():

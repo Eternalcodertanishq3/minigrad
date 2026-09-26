@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """
 test_layers.py — Layer forward/backward parity tests vs PyTorch.
 
@@ -7,8 +8,9 @@ identical outputs and gradients compared to PyTorch equivalents.
 
 Run: pytest tests/test_layers.py -v
 """
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import numpy as np
@@ -23,11 +25,12 @@ except ImportError:
     nn = None
 
 import pytest
+
 requires_torch = pytest.mark.skipif(not HAS_TORCH, reason="PyTorch not installed")
 
 from minigrad import Tensor
-from minigrad.nn import Linear, Conv2D, ReLU, Sigmoid, Tanh, Flatten, BatchNorm1D, BatchNorm2D, Sequential
-from minigrad.nn.loss import MSELoss, CrossEntropyLoss
+from minigrad.nn import BatchNorm1D, BatchNorm2D, Conv2D, Flatten, Linear, ReLU, Sequential, Sigmoid, Tanh
+from minigrad.nn.loss import CrossEntropyLoss, MSELoss
 
 np.random.seed(42)
 
@@ -171,7 +174,7 @@ def test_sequential():
     x_data = np.random.randn(4, 10)
 
     # miniGrad model
-    from minigrad.nn import Sequential, Linear, ReLU
+    from minigrad.nn import Linear, ReLU, Sequential
     mg_model = Sequential([
         Linear(10, 20),
         ReLU(),
@@ -334,6 +337,6 @@ if __name__ == "__main__":
             t()
             print(f"  PASS: {t.__name__}")
             passed += 1
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"  FAIL: {t.__name__}: {e}")
     print(f"\n{passed}/{len(tests)} tests passed")

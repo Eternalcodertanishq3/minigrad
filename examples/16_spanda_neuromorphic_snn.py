@@ -14,19 +14,20 @@ S.P.A.N.D.A. (Spike-Propagation Asynchronous Network Dynamics & Autograd)
      demonstrating > 80% temporal sparsity and > 10x hardware energy savings!
 """
 import sys
-import numpy as np
 from pathlib import Path
+
+import numpy as np
 
 # Add project root to sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from minigrad import (
     SPANDA,
-    surrogate_spike,
+    RateDecoder,
     SpikingLinear,
     SpikingSequential,
-    RateDecoder,
     Tensor,
+    surrogate_spike,
 )
 from minigrad.nn import MSELoss
 from minigrad.optim import Adam

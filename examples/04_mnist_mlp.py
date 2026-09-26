@@ -10,16 +10,18 @@ Expected accuracy: ~97% after 5 epochs
 
 Run: python examples/04_mnist_mlp.py
 """
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import numpy as np
+
 from minigrad import Tensor
-from minigrad.nn import Sequential, Linear, ReLU
+from minigrad.data import DataLoader, MNISTDataset
+from minigrad.nn import Linear, ReLU, Sequential
 from minigrad.nn.loss import CrossEntropyLoss
 from minigrad.optim import Adam
-from minigrad.data import MNISTDataset, DataLoader
 from minigrad.utils import count_parameters
 
 

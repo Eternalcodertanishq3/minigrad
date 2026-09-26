@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from minigrad.tensor import Tensor
 from minigrad.nn.module import Module
+from minigrad.tensor import Tensor
 
 
 class Linear(Module):

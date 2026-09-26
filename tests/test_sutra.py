@@ -15,11 +15,10 @@ Tests:
 import numpy as np
 
 from minigrad.graph import topological_sort
-from minigrad.nn import Linear, Module, Sequential, Tanh, MSELoss
+from minigrad.nn import Linear, Module, MSELoss, Sequential, Tanh
 from minigrad.optim import Adam
 from minigrad.sutra import NeuralODE, odeint
 from minigrad.tensor import Tensor
-
 
 # ── 1. Linear ODE Analytical Solution Parity ──────────────────────────
 

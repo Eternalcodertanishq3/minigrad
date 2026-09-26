@@ -1,14 +1,15 @@
 """
 test_safetensors.py — Unit tests and Hugging Face parity tests for safetensors reader/writer.
 """
-from pathlib import Path
 import tempfile
+from pathlib import Path
+
 import numpy as np
 import pytest
 
-from minigrad.tensor import Tensor
-from minigrad.safetensors import save_file, load_file, safe_open
 from minigrad.nn import Linear, Sequential
+from minigrad.safetensors import load_file, safe_open, save_file
+from minigrad.tensor import Tensor
 
 
 def test_roundtrip_basic():
