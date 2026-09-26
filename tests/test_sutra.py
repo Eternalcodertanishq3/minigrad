@@ -285,14 +285,16 @@ def test_neural_ode_module_training():
     """
     np.random.seed(123)
 
-    # Create target batch from spiral
-    A_true = np.array([[-0.1, -1.0], [1.0, -0.1]])
+    # Create target batch from spiral (decay alpha=0.1, frequency omega=1.0)
     batch_x0 = np.array([[1.0, 0.0], [0.0, 1.0], [-1.0, 0.0]], dtype=np.float64)
 
     # True target at t=0.5
-    # Matrix exponential for 2D spiral: exp(A*t)
-    from scipy.linalg import expm
-    exp_At = expm(A_true * 0.5)
+    # Analytical matrix exponential for 2D spiral: exp(A*t) = exp(-0.1*t) * [[cos(t), -sin(t)], [sin(t), cos(t)]]
+    t_target = 0.5
+    exp_At = np.exp(-0.1 * t_target) * np.array([
+        [np.cos(t_target), -np.sin(t_target)],
+        [np.sin(t_target), np.cos(t_target)],
+    ])
     target_data = batch_x0 @ exp_At.T
     target_tensor = Tensor(target_data)
 

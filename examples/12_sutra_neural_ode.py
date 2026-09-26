@@ -107,16 +107,18 @@ def demo_spiral_trajectory_learning():
 
     np.random.seed(42)
 
-    # True system: 2D spiral dx/dt = -0.1*x - y, dy/dt = x - 0.1*y
-    A_true = np.array([[-0.1, -1.0], [1.0, -0.1]])
-
+    # True system: 2D spiral dx/dt = -0.1*x - y, dy/dt = x - 0.1*y (alpha=0.1, omega=1.0)
     # Generate batch of 8 initial conditions on a circle of radius 1.5
     angles = np.linspace(0, 2 * np.pi, 8, endpoint=False)
     x0_data = np.stack([1.5 * np.cos(angles), 1.5 * np.sin(angles)], axis=1)
 
-    # Compute ground truth target at t=0.6 using matrix exponential
-    from scipy.linalg import expm
-    target_data = x0_data @ expm(A_true * 0.6).T
+    # Compute ground truth target at t=0.6 using analytical matrix exponential
+    t_target = 0.6
+    exp_At = np.exp(-0.1 * t_target) * np.array([
+        [np.cos(t_target), -np.sin(t_target)],
+        [np.sin(t_target), np.cos(t_target)],
+    ])
+    target_data = x0_data @ exp_At.T
     target_tensor = Tensor(target_data)
 
     # Define continuous NeuralODE vector field: dy/dt = MLP(y)
