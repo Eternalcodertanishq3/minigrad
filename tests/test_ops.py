@@ -22,8 +22,8 @@ try:
     HAS_TORCH = True
 except ImportError:
     HAS_TORCH = False
-    torch = None
-    F = None
+    torch = None  # type: ignore[assignment]
+    F = None  # type: ignore[assignment]
 
 import pytest
 

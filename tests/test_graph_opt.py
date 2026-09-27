@@ -50,7 +50,7 @@ def test_double_negation_elimination():
     """Verify -(-x) -> x."""
     x = Tensor([1.5, -2.5, 4.0], requires_grad=True)
     y = -(-x)
-    assert len(topological_sort(y)) == 5
+    assert len(topological_sort(y)) == 3
 
     opt_y, report = optimize_graph(y)
     assert opt_y is x

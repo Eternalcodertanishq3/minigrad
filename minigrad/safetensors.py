@@ -151,51 +151,59 @@ def load_file(
     if not path.is_file():
         raise FileNotFoundError(f"SafeTensors file not found: {path}")
 
+    file_size = path.stat().st_size
+    if file_size < 8:
+        raise ValueError(f"Invalid safetensors file: too short ({file_size} bytes)")
+
     with open(path, "rb") as f:
         # Read 8-byte header length (<Q)
         header_size_bytes = f.read(8)
-        if len(header_size_bytes) < 8:
-            raise ValueError(f"Invalid safetensors file: too short ({len(header_size_bytes)} bytes)")
-
         header_len = struct.unpack("<Q", header_size_bytes)[0]
         header_bytes = f.read(header_len)
         if len(header_bytes) < header_len:
             raise ValueError("Truncated header in safetensors file")
 
         header = json.loads(header_bytes.decode("utf-8"))
-        data_payload = f.read()
+        data_base_offset = 8 + header_len
 
-    result: Dict[str, Union[np.ndarray, Tensor]] = {}
+        result: Dict[str, Union[np.ndarray, Tensor]] = {}
+        target_dtype = np.dtype(dtype) if dtype is not None else None
 
-    target_dtype = np.dtype(dtype) if dtype is not None else None
+        def _parse_tensor(chunk_bytes: bytes, info: Dict[str, Any], name: str) -> Union[np.ndarray, Tensor]:
+            dtype_str = info["dtype"]
+            shape = tuple(info["shape"])
+            if dtype_str == "BF16":
+                arr = _bf16_to_f32(chunk_bytes).reshape(shape).copy()
+            elif dtype_str in STR_TO_DTYPE:
+                arr_dtype = STR_TO_DTYPE[dtype_str]
+                arr = np.frombuffer(chunk_bytes, dtype=arr_dtype).reshape(shape).copy()
+            else:
+                raise ValueError(f"Unsupported dtype '{dtype_str}' in safetensors file for tensor '{name}'")
 
-    for name, info in header.items():
-        if name == "__metadata__":
-            continue
+            if target_dtype is not None and np.issubdtype(arr.dtype, np.floating):
+                arr = arr.astype(target_dtype)
 
-        start, end = info["data_offsets"]
-        dtype_str = info["dtype"]
-        shape = tuple(info["shape"])
+            if to_tensor:
+                return Tensor(arr, requires_grad=True)
+            return arr
 
-        chunk = data_payload[start:end]
+        if file_size > data_base_offset:
+            import mmap
+            with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+                for name, info in header.items():
+                    if name == "__metadata__":
+                        continue
 
-        if dtype_str == "BF16":
-            arr = _bf16_to_f32(chunk).reshape(shape)
-        elif dtype_str in STR_TO_DTYPE:
-            arr_dtype = STR_TO_DTYPE[dtype_str]
-            arr = np.frombuffer(chunk, dtype=arr_dtype).reshape(shape).copy()
+                    start, end = info["data_offsets"]
+                    chunk = mm[data_base_offset + start : data_base_offset + end]
+                    result[name] = _parse_tensor(chunk, info, name)
         else:
-            raise ValueError(f"Unsupported dtype '{dtype_str}' in safetensors file for tensor '{name}'")
+            for name, info in header.items():
+                if name == "__metadata__":
+                    continue
+                result[name] = _parse_tensor(b"", info, name)
 
-        if target_dtype is not None and np.issubdtype(arr.dtype, np.floating):
-            arr = arr.astype(target_dtype)
-
-        if to_tensor:
-            result[name] = Tensor(arr, requires_grad=True)
-        else:
-            result[name] = arr
-
-    return result
+        return result
 
 
 class safe_open:

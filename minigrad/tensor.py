@@ -9,9 +9,12 @@ This is exactly how PyTorch's autograd works — just in pure Python/NumPy.
 """
 from __future__ import annotations
 
+import weakref
 from typing import Any, Callable, List, Optional, Sequence, Set, Tuple, Union
 
 import numpy as np
+
+from minigrad.contracts import GRAPH_FREED_ERROR_MSG, GraphState
 
 # Type alias for convenience
 ArrayLike = Union[np.ndarray, list, tuple, float, int]
@@ -30,11 +33,23 @@ class Tensor:
         _op: String name of the operation that created this tensor.
     """
 
-    __slots__ = ("data", "grad", "requires_grad", "_backward", "_prev", "_op", "_ctx")
+    __slots__ = (
+        "data",
+        "grad",
+        "requires_grad",
+        "_backward",
+        "_prev",
+        "_op",
+        "_ctx",
+        "_lifecycle",
+        "_consumers",
+        "__weakref__",
+    )
 
     def __init__(
         self,
         data: ArrayLike,
+        dtype: Optional[Union[np.dtype, type, str]] = None,
         requires_grad: bool = False,
         _children: Tuple[Tensor, ...] = (),
         _op: str = "",
@@ -42,7 +57,13 @@ class Tensor:
     ) -> None:
         from minigrad.graph import is_grad_enabled
 
-        self.data: np.ndarray = np.array(data, dtype=np.float64)
+        if isinstance(data, np.ndarray):
+            self.data: np.ndarray = data if dtype is None else data.astype(dtype)
+        elif dtype is not None:
+            self.data = np.array(data, dtype=dtype)
+        else:
+            self.data = np.array(data, dtype=np.float64)
+
         self.grad: Any = np.zeros_like(self.data)
         if not is_grad_enabled():
             self.requires_grad = False
@@ -53,24 +74,71 @@ class Tensor:
         self._backward: Callable[[], None] = lambda: None
         self._op: str = _op
         self._ctx: Any = _ctx
+        self._lifecycle: int = GraphState.LIVE
+        self._consumers: List[Any] = []
+        for child in self._prev:
+            child._consumers.append(weakref.ref(self))
+
+    @property
+    def dtype(self) -> np.dtype:
+        """The underlying NumPy dtype of the tensor."""
+        return self.data.dtype
+
+    def to(self, dtype: Union[np.dtype, type, str]) -> Tensor:
+        """Cast tensor to a target dtype."""
+        target_dtype = np.dtype(dtype)
+        if self.dtype == target_dtype:
+            return self
+        out = Tensor(
+            self.data.astype(target_dtype),
+            dtype=target_dtype,
+            requires_grad=self.requires_grad,
+            _children=(self,),
+            _op="to",
+            _ctx=target_dtype,
+        )
+
+        def _backward() -> None:
+            if self.requires_grad:
+                dx = out.grad
+                if isinstance(dx, np.ndarray) and dx.dtype != self.dtype:
+                    dx = dx.astype(self.dtype)
+                self.grad += dx
+
+        out._backward = _backward
+        return out
 
     # ------------------------------------------------------------------
     # Helper: ensure the other operand is a Tensor
     # ------------------------------------------------------------------
-    @staticmethod
-    def _ensure_tensor(other: Union[Tensor, ArrayLike]) -> Tensor:
-        return other if isinstance(other, Tensor) else Tensor(other)
+    @classmethod
+    def _ensure_tensor(
+        cls, other: Union[Tensor, ArrayLike], dtype: Optional[Union[np.dtype, type, str]] = None
+    ) -> Tensor:
+        if isinstance(other, Tensor):
+            return other
+        return cls(other, dtype=dtype)
 
     # ------------------------------------------------------------------
     # Core autograd operations
     # ------------------------------------------------------------------
 
     def __add__(self, other: Union[Tensor, ArrayLike]) -> Tensor:
-        other = self._ensure_tensor(other)
+        if isinstance(other, Tensor):
+            res_dtype = np.result_type(self.data.dtype, other.data.dtype)
+            other_t = other
+        else:
+            res_dtype = np.result_type(self.data, other)
+            other_t = Tensor(other, dtype=res_dtype)
+
+        self_data = self.data if self.data.dtype == res_dtype else self.data.astype(res_dtype)
+        other_data = other_t.data if other_t.data.dtype == res_dtype else other_t.data.astype(res_dtype)
+
         out = Tensor(
-            self.data + other.data,
-            requires_grad=self.requires_grad or other.requires_grad,
-            _children=(self, other),
+            self_data + other_data,
+            dtype=res_dtype,
+            requires_grad=self.requires_grad or other_t.requires_grad,
+            _children=(self, other_t),
             _op="add",
         )
 
@@ -78,9 +146,15 @@ class Tensor:
             # d(a+b)/da = 1, d(a+b)/db = 1
             grad = out.grad
             if self.requires_grad:
-                self.grad += Tensor._unbroadcast(grad, self.data.shape)
-            if other.requires_grad:
-                other.grad += Tensor._unbroadcast(grad, other.data.shape)
+                dx = Tensor._unbroadcast(grad, self.data.shape)
+                if isinstance(dx, np.ndarray) and dx.dtype != self.dtype:
+                    dx = dx.astype(self.dtype)
+                self.grad += dx
+            if other_t.requires_grad:
+                dy = Tensor._unbroadcast(grad, other_t.data.shape)
+                if isinstance(dy, np.ndarray) and dy.dtype != other_t.dtype:
+                    dy = dy.astype(other_t.dtype)
+                other_t.grad += dy
 
         out._backward = _backward
         return out
@@ -89,30 +163,67 @@ class Tensor:
         return self.__add__(other)
 
     def __sub__(self, other: Union[Tensor, ArrayLike]) -> Tensor:
-        other = self._ensure_tensor(other)
-        return self.__add__(-other)
+        if isinstance(other, Tensor):
+            return self.__add__(-other)
+        res_dtype = np.result_type(self.data, other)
+        return self.__add__(Tensor(-np.asarray(other), dtype=res_dtype))
 
     def __rsub__(self, other: Union[Tensor, ArrayLike]) -> Tensor:
-        return self._ensure_tensor(other).__add__(-self)
+        if isinstance(other, Tensor):
+            return other.__sub__(self)
+        res_dtype = np.result_type(self.data, other)
+        return Tensor(other, dtype=res_dtype).__add__(-self)
 
     def __neg__(self) -> Tensor:
-        return self * (-1)
+        out = Tensor(
+            -self.data,
+            dtype=self.dtype,
+            requires_grad=self.requires_grad,
+            _children=(self,),
+            _op="neg",
+        )
+
+        def _backward() -> None:
+            if self.requires_grad:
+                dx = -out.grad
+                if isinstance(dx, np.ndarray) and dx.dtype != self.dtype:
+                    dx = dx.astype(self.dtype)
+                self.grad += dx
+
+        out._backward = _backward
+        return out
 
     def __mul__(self, other: Union[Tensor, ArrayLike]) -> Tensor:
-        other = self._ensure_tensor(other)
+        if isinstance(other, Tensor):
+            res_dtype = np.result_type(self.data.dtype, other.data.dtype)
+            other_t = other
+        else:
+            res_dtype = np.result_type(self.data, other)
+            other_t = Tensor(other, dtype=res_dtype)
+
+        self_data = self.data if self.data.dtype == res_dtype else self.data.astype(res_dtype)
+        other_data = other_t.data if other_t.data.dtype == res_dtype else other_t.data.astype(res_dtype)
+
         out = Tensor(
-            self.data * other.data,
-            requires_grad=self.requires_grad or other.requires_grad,
-            _children=(self, other),
+            self_data * other_data,
+            dtype=res_dtype,
+            requires_grad=self.requires_grad or other_t.requires_grad,
+            _children=(self, other_t),
             _op="mul",
         )
 
         def _backward() -> None:
             # d(a*b)/da = b, d(a*b)/db = a
             if self.requires_grad:
-                self.grad += Tensor._unbroadcast(other.data * out.grad, self.data.shape)
-            if other.requires_grad:
-                other.grad += Tensor._unbroadcast(self.data * out.grad, other.data.shape)
+                dx = Tensor._unbroadcast(other_data * out.grad, self.data.shape)
+                if isinstance(dx, np.ndarray) and dx.dtype != self.dtype:
+                    dx = dx.astype(self.dtype)
+                self.grad += dx
+            if other_t.requires_grad:
+                dy = Tensor._unbroadcast(self_data * out.grad, other_t.data.shape)
+                if isinstance(dy, np.ndarray) and dy.dtype != other_t.dtype:
+                    dy = dy.astype(other_t.dtype)
+                other_t.grad += dy
 
         out._backward = _backward
         return out
@@ -121,13 +232,28 @@ class Tensor:
         return self.__mul__(other)
 
     def __truediv__(self, other: Union[Tensor, ArrayLike]) -> Tensor:
-        return self * (self._ensure_tensor(other) ** (-1))
+        if isinstance(other, Tensor):
+            res_dtype = np.result_type(self.data.dtype, other.data.dtype)
+            other_t = other
+        else:
+            res_dtype = np.result_type(self.data.dtype, other)
+            other_t = Tensor(other, dtype=res_dtype)
+        return self * (other_t ** (-1))
 
     def __rtruediv__(self, other: Union[Tensor, ArrayLike]) -> Tensor:
-        return self._ensure_tensor(other) * (self ** (-1))
+        if isinstance(other, Tensor):
+            res_dtype = np.result_type(self.data.dtype, other.data.dtype)
+            other_t = other
+        else:
+            res_dtype = np.result_type(self.data.dtype, other)
+            other_t = Tensor(other, dtype=res_dtype)
+        return other_t * (self ** (-1))
 
     def __pow__(self, other: Union[int, float, Tensor]) -> Tensor:
-        other_data = other.data if isinstance(other, Tensor) else other
+        other_t = self._ensure_tensor(other) if isinstance(other, Tensor) else other
+        other_data = other_t.data if isinstance(other_t, Tensor) else other
+        res_dtype = np.result_type(self.data.dtype, other_data)
+
         is_negative = (other < 0) if not isinstance(other, Tensor) else np.any(other.data < 0)
         if is_negative:
             safe_base = np.where(self.data == 0, 1e-12, self.data)
@@ -137,50 +263,76 @@ class Tensor:
 
         out = Tensor(
             out_data,
-            requires_grad=self.requires_grad or (isinstance(other, Tensor) and other.requires_grad),
-            _children=(self,) if not isinstance(other, Tensor) else (self, other),
+            dtype=res_dtype,
+            requires_grad=self.requires_grad or (isinstance(other_t, Tensor) and other_t.requires_grad),
+            _children=(self,) if not isinstance(other_t, Tensor) else (self, other_t),
             _op=f"pow^{other}",
             _ctx=other,
         )
 
         def _backward() -> None:
             # d(x^n)/dx = n * x^(n-1)
-            # Special case: x**0 → gradient is 0 everywhere.
-            # The naive formula 0 * x^(-1) produces NaN at x=0 (0 * inf).
             is_zero = (other == 0) if not isinstance(other, Tensor) else np.all(other.data == 0)
             is_negative = (other < 0) if not isinstance(other, Tensor) else np.any(other.data < 0)
             if self.requires_grad:
                 if is_zero:
-                    # d(x^0)/dx = 0 for all x (constant function)
                     pass
                 elif is_negative:
                     safe_data = np.where(self.data == 0, 1e-12, self.data)
-                    self.grad += (other_data * (safe_data ** (other_data - 1))) * out.grad
+                    dx = (other_data * (safe_data ** (other_data - 1))) * out.grad
+                    if isinstance(dx, np.ndarray) and dx.dtype != self.dtype:
+                        dx = dx.astype(self.dtype)
+                    self.grad += dx
                 else:
-                    self.grad += (other_data * (self.data ** (other_data - 1))) * out.grad
-            if isinstance(other, Tensor) and other.requires_grad:
+                    dx = (other_data * (self.data ** (other_data - 1))) * out.grad
+                    if isinstance(dx, np.ndarray) and dx.dtype != self.dtype:
+                        dx = dx.astype(self.dtype)
+                    self.grad += dx
+            if isinstance(other_t, Tensor) and other_t.requires_grad:
                 if not is_zero:
-                    # d(a^b)/db = a^b * ln(a)
-                    other.grad += Tensor._unbroadcast(out.data * np.log(self.data + 1e-9) * out.grad, other.data.shape)
+                    # d(a^b)/db = a^b * ln(a) (EXACT: NO +1e-9)
+                    with np.errstate(divide="ignore", invalid="ignore"):
+                        log_a = np.log(self.data)
+                    dy = Tensor._unbroadcast(out.data * log_a * out.grad, other_t.data.shape)
+                    if isinstance(dy, np.ndarray) and dy.dtype != other_t.dtype:
+                        dy = dy.astype(other_t.dtype)
+                    other_t.grad += dy
 
         out._backward = _backward
         return out
 
+    def __rpow__(self, other: Union[int, float, ArrayLike, Tensor]) -> Tensor:
+        if isinstance(other, Tensor):
+            return other.__pow__(self)
+        res_dtype = np.result_type(other, self.data.dtype)
+        other_t = Tensor(other, dtype=res_dtype)
+        return other_t.__pow__(self)
+
     def __matmul__(self, other: Union[Tensor, ArrayLike]) -> Tensor:
-        other = self._ensure_tensor(other)
+        if isinstance(other, Tensor):
+            res_dtype = np.result_type(self.data.dtype, other.data.dtype)
+            other_t = other
+        else:
+            res_dtype = np.result_type(self.data, other)
+            other_t = Tensor(other, dtype=res_dtype)
+
         is_1d_lhs = (self.data.ndim == 1)
         self_2d = self.data.reshape(1, -1) if is_1d_lhs else self.data
-        if self_2d.ndim != 2 or other.data.ndim != 2:
+        if self_2d.ndim != 2 or other_t.data.ndim != 2:
             raise ValueError(
                 "Tensor matmul currently supports 2D tensors only; "
-                f"got shapes {self.data.shape} and {other.data.shape}"
+                f"got shapes {self.data.shape} and {other_t.data.shape}"
             )
 
-        out_data = (self_2d @ other.data).reshape(-1) if is_1d_lhs else (self_2d @ other.data)
+        self_2d_p = self_2d if self_2d.dtype == res_dtype else self_2d.astype(res_dtype)
+        other_p = other_t.data if other_t.data.dtype == res_dtype else other_t.data.astype(res_dtype)
+
+        out_data = (self_2d_p @ other_p).reshape(-1) if is_1d_lhs else (self_2d_p @ other_p)
         out = Tensor(
             out_data,
-            requires_grad=self.requires_grad or other.requires_grad,
-            _children=(self, other),
+            dtype=res_dtype,
+            requires_grad=self.requires_grad or other_t.requires_grad,
+            _children=(self, other_t),
             _op="matmul",
         )
 
@@ -189,10 +341,16 @@ class Tensor:
             # d(AB)/dB = A.T @ grad
             grad_2d = out.grad.reshape(1, -1) if is_1d_lhs else out.grad
             if self.requires_grad:
-                dx = grad_2d @ other.data.T
-                self.grad += dx.reshape(self.data.shape) if is_1d_lhs else dx
-            if other.requires_grad:
-                other.grad += self_2d.T @ grad_2d
+                dx = grad_2d @ other_t.data.T
+                dx = dx.reshape(self.data.shape) if is_1d_lhs else dx
+                if isinstance(dx, np.ndarray) and dx.dtype != self.dtype:
+                    dx = dx.astype(self.dtype)
+                self.grad += dx
+            if other_t.requires_grad:
+                dy = self_2d.T @ grad_2d
+                if isinstance(dy, np.ndarray) and dy.dtype != other_t.dtype:
+                    dy = dy.astype(other_t.dtype)
+                other_t.grad += dy
 
         out._backward = _backward
         return out
@@ -329,8 +487,11 @@ class Tensor:
         return out
 
     def log(self) -> Tensor:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            out_data = np.log(self.data)
         out = Tensor(
-            np.log(self.data + 1e-9),
+            out_data,
+            dtype=self.dtype,
             requires_grad=self.requires_grad,
             _children=(self,),
             _op="log",
@@ -338,8 +499,12 @@ class Tensor:
 
         def _backward() -> None:
             if self.requires_grad:
-                # d(ln(x))/dx = 1/x
-                self.grad += (1.0 / (self.data + 1e-9)) * out.grad
+                # d(ln(x))/dx = 1/x (EXACT: NO +1e-9)
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    dx = (1.0 / self.data) * out.grad
+                if isinstance(dx, np.ndarray) and dx.dtype != self.dtype:
+                    dx = dx.astype(self.dtype)
+                self.grad += dx
 
         out._backward = _backward
         return out
@@ -504,6 +669,9 @@ class Tensor:
                           allowing higher-order derivative products to be computed.
             retain_graph: If False, the graph used to compute the grads will be freed.
         """
+        if self._lifecycle == GraphState.FREED:
+            raise RuntimeError(GRAPH_FREED_ERROR_MSG)
+
         from minigrad.glassbox import (
             GradientAnomalyError,
             diagnose_root_cause,
@@ -524,6 +692,11 @@ class Tensor:
 
         build_topo(self)
 
+        # Check for freed intermediate nodes along the graph
+        for node in topo:
+            if node is not self and node._prev and node._lifecycle == GraphState.FREED:
+                raise RuntimeError(GRAPH_FREED_ERROR_MSG)
+
         if create_graph:
             from minigrad.autograd import grad
 
@@ -531,7 +704,7 @@ class Tensor:
             if not leaf_nodes:
                 return
 
-            grads = grad(self, leaf_nodes, create_graph=True, allow_unused=True)
+            grads = grad(self, leaf_nodes, create_graph=True, retain_graph=True, allow_unused=True)
             for leaf, g in zip(leaf_nodes, grads):
                 if isinstance(leaf.grad, Tensor):
                     leaf.grad = leaf.grad + g
@@ -539,7 +712,7 @@ class Tensor:
                     leaf.grad = g
                 else:
                     leaf.grad = Tensor(leaf.grad) + g
-            self.grad = Tensor(np.ones_like(self.data), requires_grad=create_graph)
+            self.grad = Tensor(np.ones_like(self.data), dtype=self.dtype, requires_grad=create_graph)
             return
 
         if anomaly_check:
@@ -579,6 +752,11 @@ class Tensor:
                             reason=reason,
                             details=details,
                         )
+
+        # Clear intermediate activation gradients from previous backward passes
+        for node in topo:
+            if node is not self and node._prev:
+                node.grad = np.zeros_like(node.data)
 
         # Seed: dL/dL = 1
         self.grad = np.ones_like(self.data)
@@ -640,6 +818,11 @@ class Tensor:
             else:
                 node._backward()
 
+        # If not retaining graph, transition root to FREED state and clear its backward closure
+        if not retain_graph and not create_graph:
+            self._lifecycle = GraphState.FREED
+            self._backward = lambda: None
+
     def explain(self) -> str:
         """
         Generate a structured ASCII telemetry report of gradient flow across all nodes
@@ -662,6 +845,7 @@ class Tensor:
         enable_constant_folding: bool = True,
         enable_algebraic: bool = True,
         enable_fusion: bool = True,
+        verify: bool = False,
     ) -> Tuple[Tensor, Any]:
         """
         Run symbolic optimizations and algebraic simplifications on the DAG rooted at this tensor.
@@ -674,14 +858,15 @@ class Tensor:
             enable_constant_folding=enable_constant_folding,
             enable_algebraic=enable_algebraic,
             enable_fusion=enable_fusion,
+            verify=verify,
         )
 
-    def optimize(self) -> Tensor:
+    def optimize(self, verify: bool = False) -> Tensor:
         """
         Convenience method: optimize computational graph and return the optimized root tensor.
         """
         from minigrad.graph_opt import optimize
-        return optimize(self)
+        return optimize(self, verify=verify)
 
     def export_c(
         self,

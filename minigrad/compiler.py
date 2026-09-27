@@ -524,6 +524,12 @@ class CCompiler:
             active_intervals.append((offset, offset + size, death_step))
             max_arena_size = max(max_arena_size, offset + size)
 
+        # Assert static memory arena reuse bound: total arena allocated <= unshared buffer sum
+        total_unshared = sum(size for _, size, _ in intermediate_nodes)
+        assert max_arena_size <= total_unshared, (
+            f"Static memory arena size {max_arena_size} exceeds unshared sum {total_unshared}"
+        )
+
         return max_arena_size
 
     def compile(self) -> str:

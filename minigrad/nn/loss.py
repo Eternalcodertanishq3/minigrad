@@ -80,31 +80,38 @@ class CrossEntropyLoss(Module):
         """
         N = logits.data.shape[0]
 
-        # Numerically stable softmax: subtract max before exp
-        shifted = logits.data - np.max(logits.data, axis=1, keepdims=True)
-        exp_shifted = np.exp(shifted)
-        probs = exp_shifted / np.sum(exp_shifted, axis=1, keepdims=True)
-
-        # Negative log-likelihood on correct classes
-        correct_probs = probs[np.arange(N), targets]
-        correct_logprobs = -np.log(correct_probs + 1e-9)
+        # Exact LogSumExp: log(sum(exp(x))) = max_x + log(sum(exp(x - max_x)))
+        max_logits = np.max(logits.data, axis=1, keepdims=True)
+        exp_shifted = np.exp(logits.data - max_logits)
+        sum_exp = np.sum(exp_shifted, axis=1, keepdims=True)
+        log_sum_exp = max_logits + np.log(sum_exp)
+        log_probs = logits.data - log_sum_exp
+        correct_logprobs = -log_probs[np.arange(N), targets]
 
         if self.reduction == "mean":
             loss_val = correct_logprobs.mean()
         else:
             loss_val = correct_logprobs.sum()
 
-        result = Tensor(loss_val, requires_grad=logits.requires_grad,
-                       _children=(logits,), _op="cross_entropy")
+        result = Tensor(
+            loss_val,
+            dtype=logits.dtype,
+            requires_grad=logits.requires_grad,
+            _children=(logits,),
+            _op="cross_entropy",
+        )
 
         def _backward() -> None:
             if logits.requires_grad:
-                # Gradient of softmax + CE combined = (probs - one_hot) / N (or 1 if sum)
+                probs = np.exp(log_probs)
                 grad = probs.copy()
                 grad[np.arange(N), targets] -= 1.0
                 if self.reduction == "mean":
                     grad = grad / N
-                logits.grad += grad * result.grad
+                dx = grad * result.grad
+                if isinstance(dx, np.ndarray) and dx.dtype != logits.dtype:
+                    dx = dx.astype(logits.dtype)
+                logits.grad += dx
 
         result._backward = _backward
         return result

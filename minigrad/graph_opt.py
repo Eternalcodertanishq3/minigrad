@@ -13,10 +13,11 @@ symbolic optimizations directly on the explicit computational DAG:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
+from minigrad.contracts import check_dynamic_parity, check_numerical_parity
 from minigrad.graph import topological_sort
 from minigrad.tensor import Tensor
 
@@ -97,7 +98,21 @@ def fused_linear_relu(x: Tensor, weight: Tensor, bias: Optional[Tensor] = None) 
     return out
 
 
-# ── Functional Dispatch Node Rebuilder ──────────────────────────────
+# ── Canonical Operation Reconstruction Registry ─────────────────────
+
+Reconstructor = Callable[[Tuple[Tensor, ...], Any, Tensor], Tensor]
+_RECONSTRUCTORS: Dict[str, Reconstructor] = {}
+
+
+def register_reconstructor(op_name: str, fn: Reconstructor) -> None:
+    """Register an operation reconstructor for DAG optimization rewrites."""
+    _RECONSTRUCTORS[op_name] = fn
+
+
+def is_reconstructible(op: str) -> bool:
+    """Return True if the operation has a registered canonical reconstructor."""
+    return (op in _RECONSTRUCTORS) or (op is not None and op.startswith("pow^"))
+
 
 def _rebuild_node(op: str, parents: Tuple[Tensor, ...], ctx: Any, orig_node: Tensor) -> Tensor:
     """
@@ -105,75 +120,99 @@ def _rebuild_node(op: str, parents: Tuple[Tensor, ...], ctx: Any, orig_node: Ten
     Constructs a fresh _backward closure bound directly to the new parents,
     guaranteeing 100% autograd gradient flow integrity.
     """
-    if op == "add":
-        return parents[0] + parents[1]
-    elif op == "sub":
-        return parents[0] - parents[1]
-    elif op == "mul":
-        return parents[0] * parents[1]
-    elif op == "div":
-        return parents[0] / parents[1]
-    elif op == "matmul":
-        return parents[0] @ parents[1]
-    elif op == "neg":
-        return -parents[0]
-    elif op == "relu":
-        return parents[0].relu()
-    elif op == "sigmoid":
-        return parents[0].sigmoid()
-    elif op == "tanh":
-        return parents[0].tanh()
-    elif op == "gelu":
-        return parents[0].gelu()
-    elif op == "exp":
-        return parents[0].exp()
-    elif op == "log":
-        return parents[0].log()
-    elif op == "softmax":
-        from minigrad.ops import softmax
-        axis = ctx if ctx is not None else -1
-        return softmax(parents[0], axis=axis)
-    elif op and (op == "pow" or op.startswith("pow^")):
+    if op in _RECONSTRUCTORS:
+        return _RECONSTRUCTORS[op](parents, ctx, orig_node)
+    elif op and op.startswith("pow^"):
         p = ctx if ctx is not None else (parents[1] if len(parents) > 1 else 2.0)
         return parents[0] ** p
-    elif op in ("reshape", "flatten"):
-        if ctx is not None and isinstance(ctx, (tuple, list)):
-            return parents[0].reshape(*ctx)
-        return parents[0].reshape(*orig_node.data.shape)
-    elif op == "transpose":
-        axes = ctx[0] if isinstance(ctx, tuple) and len(ctx) > 0 and isinstance(ctx[0], (tuple, list)) else ctx
-        if axes is not None:
-            return parents[0].transpose(*axes)
-        return parents[0].transpose()
-    elif op == "sum":
-        if ctx is not None and isinstance(ctx, tuple) and len(ctx) >= 2:
-            axes, keepdims = ctx[0], ctx[1]
-            return parents[0].sum(axis=axes, keepdims=keepdims)
-        return parents[0].sum()
-    elif op == "mean":
-        if ctx is not None and isinstance(ctx, tuple) and len(ctx) >= 2:
-            axes, keepdims = ctx[0], ctx[1]
-            return parents[0].mean(axis=axes, keepdims=keepdims)
-        return parents[0].mean()
-    elif op == "getitem":
-        return parents[0][ctx]
-    elif op == "fused_linear":
-        bias = parents[2] if len(parents) > 2 else None
-        return fused_linear(parents[0], parents[1], bias)
-    elif op == "fused_linear_relu":
-        bias = parents[2] if len(parents) > 2 else None
-        return fused_linear_relu(parents[0], parents[1], bias)
     else:
-        # Fallback for custom nodes
-        new_node = Tensor(
-            orig_node.data,
-            requires_grad=orig_node.requires_grad,
-            _children=parents,
-            _op=orig_node._op,
-            _ctx=ctx,
-        )
-        new_node._backward = orig_node._backward
-        return new_node
+        # Non-reconstructible operation: keep orig_node as an opaque boundary without breaking the graph
+        return orig_node
+
+
+# Register all standard primitives
+register_reconstructor("add", lambda parents, ctx, orig: parents[0] + parents[1])
+register_reconstructor("sub", lambda parents, ctx, orig: parents[0] - parents[1])
+register_reconstructor("mul", lambda parents, ctx, orig: parents[0] * parents[1])
+register_reconstructor("div", lambda parents, ctx, orig: parents[0] / parents[1])
+register_reconstructor("matmul", lambda parents, ctx, orig: parents[0] @ parents[1])
+register_reconstructor("neg", lambda parents, ctx, orig: -parents[0])
+register_reconstructor("relu", lambda parents, ctx, orig: parents[0].relu())
+register_reconstructor("sigmoid", lambda parents, ctx, orig: parents[0].sigmoid())
+register_reconstructor("tanh", lambda parents, ctx, orig: parents[0].tanh())
+register_reconstructor("gelu", lambda parents, ctx, orig: parents[0].gelu())
+register_reconstructor("sin", lambda parents, ctx, orig: parents[0].sin())
+register_reconstructor("cos", lambda parents, ctx, orig: parents[0].cos())
+register_reconstructor("exp", lambda parents, ctx, orig: parents[0].exp())
+register_reconstructor("log", lambda parents, ctx, orig: parents[0].log())
+
+
+def _reconstruct_pow(parents: Tuple[Tensor, ...], ctx: Any, orig: Tensor) -> Tensor:
+    p = ctx if ctx is not None else (parents[1] if len(parents) > 1 else 2.0)
+    return parents[0] ** p
+
+
+register_reconstructor("pow", _reconstruct_pow)
+
+
+def _reconstruct_softmax(parents: Tuple[Tensor, ...], ctx: Any, orig: Tensor) -> Tensor:
+    from minigrad.ops import softmax
+    axis = ctx if ctx is not None else -1
+    return softmax(parents[0], axis=axis)
+
+
+register_reconstructor("softmax", _reconstruct_softmax)
+
+
+def _reconstruct_reshape(parents: Tuple[Tensor, ...], ctx: Any, orig: Tensor) -> Tensor:
+    if ctx is not None and isinstance(ctx, (tuple, list)):
+        return parents[0].reshape(*ctx)
+    return parents[0].reshape(*orig.data.shape)
+
+
+register_reconstructor("reshape", _reconstruct_reshape)
+register_reconstructor("flatten", _reconstruct_reshape)
+
+
+def _reconstruct_transpose(parents: Tuple[Tensor, ...], ctx: Any, orig: Tensor) -> Tensor:
+    axes = ctx[0] if isinstance(ctx, tuple) and len(ctx) > 0 and isinstance(ctx[0], (tuple, list)) else ctx
+    if axes is not None:
+        return parents[0].transpose(*axes)
+    return parents[0].transpose()
+
+
+register_reconstructor("transpose", _reconstruct_transpose)
+
+
+def _reconstruct_sum(parents: Tuple[Tensor, ...], ctx: Any, orig: Tensor) -> Tensor:
+    if ctx is not None and isinstance(ctx, tuple) and len(ctx) >= 2:
+        return parents[0].sum(axis=ctx[0], keepdims=ctx[1])
+    return parents[0].sum()
+
+
+register_reconstructor("sum", _reconstruct_sum)
+
+
+def _reconstruct_mean(parents: Tuple[Tensor, ...], ctx: Any, orig: Tensor) -> Tensor:
+    if ctx is not None and isinstance(ctx, tuple) and len(ctx) >= 2:
+        return parents[0].mean(axis=ctx[0], keepdims=ctx[1])
+    return parents[0].mean()
+
+
+register_reconstructor("mean", _reconstruct_mean)
+register_reconstructor("getitem", lambda parents, ctx, orig: parents[0][ctx])
+register_reconstructor("fused_linear", lambda parents, ctx, orig: fused_linear(parents[0], parents[1], parents[2] if len(parents) > 2 else None))
+register_reconstructor("fused_linear_relu", lambda parents, ctx, orig: fused_linear_relu(parents[0], parents[1], parents[2] if len(parents) > 2 else None))
+
+
+def _reconstruct_log_softmax(parents: Tuple[Tensor, ...], ctx: Any, orig: Tensor) -> Tensor:
+    from minigrad.ops import log_softmax
+    axis = ctx if ctx is not None else -1
+    return log_softmax(parents[0], axis=axis)
+
+
+register_reconstructor("log_softmax", _reconstruct_log_softmax)
+register_reconstructor("to", lambda parents, ctx, orig: parents[0].to(ctx if ctx is not None else orig.dtype))
 
 
 # ── Optimization Telemetry & Report ─────────────────────────────────
@@ -187,6 +226,10 @@ class OptimizationReport:
     kernels_fused: int
     memory_saved_bytes: int
     passes_run: int
+    verified: bool = False
+    max_forward_diff: float = 0.0
+    max_grad_diff: float = 0.0
+    max_numerical_diff: float = 0.0
 
     @property
     def reduction_pct(self) -> float:
@@ -197,6 +240,11 @@ class OptimizationReport:
     def summary(self) -> str:
         """Emits a structured, terminal-safe ASCII summary table."""
         header = "miniGrad Symbolic Graph Optimization Report (Pillar 3)"
+        equiv_status = (
+            f"VERIFIED (max_grad_diff={self.max_grad_diff:.2e}, numerical_diff={self.max_numerical_diff:.2e}, forward_diff={self.max_forward_diff:.2e})"
+            if self.verified
+            else "NOT VERIFIED (run with verify=True)"
+        )
         lines = [
             "=" * 74,
             f"{header:^74}",
@@ -209,7 +257,7 @@ class OptimizationReport:
             f"  * Fused Kernel Patterns:        {self.kernels_fused}",
             f"  * Activation Memory Saved:      {self.memory_saved_bytes} bytes",
             f"  * Optimization Passes Run:      {self.passes_run}",
-            "  * Autograd Equivalence:         VERIFIED (100% Exact Gradient Parity)",
+            f"  * Autograd Equivalence:         {equiv_status}",
             "=" * 74,
         ]
         return "\n".join(lines)
@@ -220,7 +268,8 @@ class OptimizationReport:
             f"optimized={self.optimized_nodes}, "
             f"reduction={self.reduction_pct:.1f}%, "
             f"identities={self.identities_eliminated}, "
-            f"fused={self.kernels_fused})"
+            f"fused={self.kernels_fused}, "
+            f"verified={self.verified})"
         )
 
 
@@ -523,6 +572,18 @@ def _kernel_fusion_pass(root: Tensor) -> Tuple[Tensor, int, int]:
     return node_map[id(root)], fused_count, memory_saved
 
 
+def _eval_dag_forward(topo_list: List[Tensor], leaf_overrides: Dict[int, Tensor]) -> Tensor:
+    """Evaluate DAG forward pass with overridden leaf tensors for finite difference checks."""
+    node_map: Dict[int, Tensor] = {}
+    for n in topo_list:
+        if not n._prev:
+            node_map[id(n)] = leaf_overrides.get(id(n), n)
+        else:
+            parents = tuple(node_map[id(p)] for p in n._prev)
+            node_map[id(n)] = _rebuild_node(n._op, parents, getattr(n, "_ctx", None), n)
+    return node_map[id(topo_list[-1])]
+
+
 # ── Public Optimizer Pipeline ───────────────────────────────────────
 
 def optimize_graph(
@@ -531,6 +592,7 @@ def optimize_graph(
     enable_constant_folding: bool = True,
     enable_algebraic: bool = True,
     enable_fusion: bool = True,
+    verify: bool = False,
 ) -> Tuple[Tensor, OptimizationReport]:
     """
     Run full symbolic optimization pipeline on a computation graph.
@@ -544,12 +606,29 @@ def optimize_graph(
         enable_constant_folding: Enable constant expression folding.
         enable_algebraic: Enable algebraic identity simplification (+0, *1, etc.).
         enable_fusion: Enable operator fusion (Linear+ReLU).
+        verify: If True, execute 3-layer differential validation ensuring exact forward
+                and backward parity within dynamic tolerance (atol + rtol * |reference|).
 
     Returns:
         Tuple of (optimized_root_tensor, OptimizationReport).
     """
     initial_nodes = len(topological_sort(root))
     current_root = root
+
+    # Verification snapshot
+    y_orig = None
+    orig_grads: Dict[int, np.ndarray] = {}
+    leaf_nodes: List[Tensor] = []
+    if verify:
+        y_orig = root.data.copy()
+        topo_orig = topological_sort(root)
+        leaf_nodes = [n for n in topo_orig if not n._prev and n.requires_grad]
+        if root.requires_grad or leaf_nodes:
+            root.backward(retain_graph=True)
+            orig_grads = {id(n): n.grad.copy() for n in leaf_nodes}
+            for n in leaf_nodes:
+                n.zero_grad()
+            root.grad = np.zeros_like(root.data)
 
     total_identities = 0
     total_folded = 0
@@ -589,6 +668,67 @@ def optimize_graph(
 
     optimized_nodes = len(topological_sort(current_root))
 
+    max_fwd_diff = 0.0
+    max_grad_diff = 0.0
+    max_num_diff = 0.0
+    is_verified = False
+
+    if verify and y_orig is not None:
+        y_opt = current_root.data
+        fwd_pass, max_fwd_diff, fwd_tol = check_dynamic_parity(y_opt, y_orig, dtype=root.dtype)
+        if not fwd_pass:
+            raise AssertionError(
+                f"Optimization verification failed: forward mismatch max_diff={max_fwd_diff:.4e} > tol={fwd_tol:.4e}"
+            )
+
+        if root.requires_grad or leaf_nodes:
+            current_root.backward(retain_graph=True)
+            for n in leaf_nodes:
+                og = orig_grads[id(n)]
+                ng = n.grad
+                g_pass, g_diff, g_tol = check_dynamic_parity(ng, og, dtype=n.dtype)
+                max_grad_diff = max(max_grad_diff, g_diff)
+                if not g_pass:
+                    raise AssertionError(
+                        f"Optimization verification failed: gradient parity mismatch on leaf max_diff={g_diff:.4e} > tol={g_tol:.4e}"
+                    )
+
+            # Layer 3: Independent Numerical Finite Differences reference validation
+            topo_opt = topological_sort(current_root)
+            total_elements = sum(n.data.size for n in leaf_nodes)
+            max_check_elements = 250
+            for n in leaf_nodes:
+                eps = 1e-5 if n.dtype == np.float64 else 1e-3
+                num_grad = np.zeros_like(n.data)
+                it = np.nditer(n.data, flags=["multi_index"])
+                count = 0
+                while not it.finished:
+                    idx = it.multi_index
+                    orig_val = n.data[idx]
+                    v_plus = n.data.copy()
+                    v_plus[idx] = orig_val + eps
+                    f_plus = _eval_dag_forward(topo_opt, {id(n): Tensor(v_plus, dtype=n.dtype)}).data.sum()
+                    v_minus = n.data.copy()
+                    v_minus[idx] = orig_val - eps
+                    f_minus = _eval_dag_forward(topo_opt, {id(n): Tensor(v_minus, dtype=n.dtype)}).data.sum()
+                    num_grad[idx] = (f_plus - f_minus) / (2.0 * eps)
+                    it.iternext()
+                    count += 1
+                    if total_elements > max_check_elements and count >= 20:
+                        break
+
+                check_slice = (num_grad != 0.0) if (total_elements > max_check_elements and count < n.data.size) else None
+                act_g = n.grad[check_slice] if check_slice is not None else n.grad
+                ref_g = num_grad[check_slice] if check_slice is not None else num_grad
+                n_pass, n_diff, n_tol = check_numerical_parity(act_g, ref_g, dtype=n.dtype)
+                max_num_diff = max(max_num_diff, n_diff)
+                if not n_pass:
+                    raise AssertionError(
+                        f"Optimization verification failed: numerical reference mismatch on leaf max_diff={n_diff:.4e} > tol={n_tol:.4e}"
+                    )
+
+        is_verified = True
+
     report = OptimizationReport(
         initial_nodes=initial_nodes,
         optimized_nodes=optimized_nodes,
@@ -597,12 +737,16 @@ def optimize_graph(
         kernels_fused=total_fused,
         memory_saved_bytes=total_memory_saved,
         passes_run=passes_run,
+        verified=is_verified,
+        max_forward_diff=max_fwd_diff,
+        max_grad_diff=max_grad_diff,
+        max_numerical_diff=max_num_diff,
     )
 
     return current_root, report
 
 
-def optimize(root: Tensor) -> Tensor:
+def optimize(root: Tensor, verify: bool = False) -> Tensor:
     """Convenience function: optimize computational graph and return the optimized root tensor."""
-    opt_root, _ = optimize_graph(root)
+    opt_root, _ = optimize_graph(root, verify=verify)
     return opt_root

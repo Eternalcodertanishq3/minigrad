@@ -15,6 +15,7 @@ from typing import Dict, List, Optional, Sequence, Set, Tuple, Union
 
 import numpy as np
 
+from minigrad.contracts import GRAPH_FREED_ERROR_MSG, GraphState
 from minigrad.tensor import Tensor
 
 # ── VJP Unbroadcasting Helper ────────────────────────────────────────
@@ -262,6 +263,10 @@ def grad(
     outputs_list: List[Tensor] = [outputs] if isinstance(outputs, Tensor) else list(outputs)
     inputs_list: List[Tensor] = [inputs] if isinstance(inputs, Tensor) else list(inputs)
 
+    for out in outputs_list:
+        if out._lifecycle == GraphState.FREED:
+            raise RuntimeError(GRAPH_FREED_ERROR_MSG)
+
     # Initialize grad_outputs
     if grad_outputs is None:
         grad_outputs_list: List[Tensor] = []
@@ -293,6 +298,10 @@ def grad(
 
     for out in outputs_list:
         build_topo(out)
+
+    for node in topo:
+        if node not in outputs_list and node._prev and node._lifecycle == GraphState.FREED:
+            raise RuntimeError(GRAPH_FREED_ERROR_MSG)
 
     # Seed gradient map
     grad_map: Dict[int, Tensor] = {}
@@ -332,6 +341,11 @@ def grad(
             res = Tensor(np.zeros_like(inp.data), requires_grad=create_graph)
         result.append(res)
 
+    if not retain_graph and not create_graph:
+        for out in outputs_list:
+            out._lifecycle = GraphState.FREED
+            out._backward = lambda: None
+
     return tuple(result)
 
 
@@ -356,8 +370,8 @@ def hessian(
 
     inputs_list: List[Tensor] = [inputs] if isinstance(inputs, Tensor) else list(inputs)
 
-    # First gradient vector (with create_graph=True)
-    first_grads = grad(output, inputs_list, create_graph=True)
+    # First gradient vector (with create_graph=True, retain_graph=True)
+    first_grads = grad(output, inputs_list, create_graph=True, retain_graph=True)
 
     rows: List[Tensor] = []
     for g_k, inp_k in zip(first_grads, inputs_list):
