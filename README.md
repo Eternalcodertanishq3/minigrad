@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/logo.svg" width="140" height="140" alt="miniGrad Logo" />
+<img src="https://raw.githubusercontent.com/Eternalcodertanishq3/minigrad/main/assets/logo.svg" width="140" height="140" alt="miniGrad Logo" />
 
 # miniGrad (तर्क · सूत्र · स्पन्द)
 
