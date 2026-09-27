@@ -31,7 +31,7 @@ from minigrad.glassbox import (
     GradientAnomalyError,
     NodeTelemetry,
 )
-from minigrad.compiler import export_c, to_c
+from minigrad.compiler import CCompiler, compile_to_library, export_c, to_c
 from minigrad.graph_opt import optimize, optimize_graph, OptimizationReport
 from minigrad.vmap import (
     vmap,
@@ -107,6 +107,8 @@ __all__ = [
     "NodeTelemetry",
     "export_c",
     "to_c",
+    "CCompiler",
+    "compile_to_library",
     "optimize",
     "optimize_graph",
     "OptimizationReport",

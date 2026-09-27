@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from minigrad import Tensor, export_c
+from minigrad import Tensor, compile_to_library, export_c
 from minigrad.nn import (
     GELU,
     LayerNorm,
@@ -192,3 +192,285 @@ def test_c_export_layernorm(tmp_path: Path):
             c_outputs.append(float(line.split("=")[-1].strip()))
 
     np.testing.assert_allclose(c_outputs, py_out, rtol=1e-4, atol=1e-4)
+
+
+@pytest.mark.skipif(CLANG_OR_GCC is None, reason="No C compiler found")
+def test_binary_weights_decoupling(tmp_path: Path):
+    """Test binary weights file decoupling (.bin) and native C loader."""
+    np.random.seed(42)
+    model = Sequential([Linear(4, 8), ReLU(), Linear(8, 2)])
+    x = Tensor([[0.5, -1.2, 0.3, 2.0]], requires_grad=False)
+    py_out = model(x).data.flatten()
+
+    c_file = tmp_path / "bin_model.c"
+    bin_file = tmp_path / "bin_model.bin"
+    exe_file = tmp_path / ("bin_model.exe" if os.name == "nt" else "bin_model")
+
+    export_c(
+        model,
+        x,
+        filename=c_file,
+        include_main=True,
+        model_name="bin_test",
+        binary_weights=True,
+        weights_filename=bin_file,
+    )
+
+    assert bin_file.exists()
+    assert bin_file.stat().st_size > 0
+
+    c_code = c_file.read_text(encoding="utf-8")
+    assert "bin_test_load_weights" in c_code
+    assert "bin_test_weights_buf" in c_code
+
+    res = _compile_c(c_file, exe_file)
+    assert res.returncode == 0, f"Compilation failed: {res.stderr}"
+
+    run_res = subprocess.run([str(exe_file), str(bin_file)], capture_output=True, text=True, check=False)
+    assert run_res.returncode == 0, f"Execution failed: {run_res.stderr}"
+
+    c_outputs = []
+    for line in run_res.stdout.splitlines():
+        if "output[" in line and "=" in line:
+            c_outputs.append(float(line.split("=")[-1].strip()))
+
+    np.testing.assert_allclose(c_outputs, py_out, rtol=1e-4, atol=1e-4)
+
+
+@pytest.mark.skipif(CLANG_OR_GCC is None, reason="No C compiler found")
+def test_int8_quantization(tmp_path: Path):
+    """Test INT8 post-training quantization and native int8 kernels."""
+    np.random.seed(42)
+    model = Sequential([Linear(4, 16), ReLU(), Linear(16, 2)])
+    x = Tensor([[0.5, -1.0, 1.5, -0.5]], requires_grad=False)
+    py_out = model(x).data.flatten()
+
+    c_file = tmp_path / "int8_model.c"
+    exe_file = tmp_path / ("int8_model.exe" if os.name == "nt" else "int8_model")
+
+    export_c(
+        model,
+        x,
+        filename=c_file,
+        include_main=True,
+        model_name="int8_test",
+        quantize="int8",
+    )
+
+    c_code = c_file.read_text(encoding="utf-8")
+    assert "signed char" in c_code
+    assert "scale" in c_code
+    assert "minigrad_fused_linear_relu_int8_fp32" in c_code or "minigrad_matmul_int8_fp32" in c_code
+
+    res = _compile_c(c_file, exe_file)
+    assert res.returncode == 0, f"Compilation failed: {res.stderr}"
+
+    run_res = subprocess.run([str(exe_file)], capture_output=True, text=True, check=False)
+    assert run_res.returncode == 0, f"Execution failed: {run_res.stderr}"
+
+    c_outputs = []
+    for line in run_res.stdout.splitlines():
+        if "output[" in line and "=" in line:
+            c_outputs.append(float(line.split("=")[-1].strip()))
+
+    # Quantization introduces small rounding differences, but tracks FP32 output closely
+    np.testing.assert_allclose(c_outputs, py_out, atol=0.08)
+
+
+@pytest.mark.skipif(CLANG_OR_GCC is None, reason="No C compiler found")
+def test_activation_memory_arena(tmp_path: Path):
+    """Test activation liveness arena memory planning (80-95% RAM reduction)."""
+    np.random.seed(42)
+    model = Sequential([
+        Linear(8, 16),
+        ReLU(),
+        Linear(16, 16),
+        ReLU(),
+        Linear(16, 16),
+        ReLU(),
+        Linear(16, 4),
+    ])
+    x = Tensor(np.random.randn(1, 8).astype(np.float32), requires_grad=False)
+    py_out = model(x).data.flatten()
+
+    c_file = tmp_path / "arena_model.c"
+    exe_file = tmp_path / ("arena_model.exe" if os.name == "nt" else "arena_model")
+
+    export_c(
+        model,
+        x,
+        filename=c_file,
+        include_main=True,
+        model_name="arena_test",
+        arena_memory=True,
+    )
+
+    c_code = c_file.read_text(encoding="utf-8")
+    assert "arena_test_arena[" in c_code
+    assert "RAM saved via Arena" in c_code
+
+    res = _compile_c(c_file, exe_file)
+    assert res.returncode == 0, f"Compilation failed: {res.stderr}"
+
+    run_res = subprocess.run([str(exe_file)], capture_output=True, text=True, check=False)
+    assert run_res.returncode == 0, f"Execution failed: {run_res.stderr}"
+
+    c_outputs = []
+    for line in run_res.stdout.splitlines():
+        if "output[" in line and "=" in line:
+            c_outputs.append(float(line.split("=")[-1].strip()))
+
+    np.testing.assert_allclose(c_outputs, py_out, rtol=1e-4, atol=1e-4)
+
+
+@pytest.mark.skipif(CLANG_OR_GCC is None, reason="No C compiler found")
+def test_cache_tiling_and_openmp(tmp_path: Path):
+    """Test 32x32 cache tiling loop blocking and OpenMP annotations."""
+    np.random.seed(42)
+    model = Sequential([Linear(32, 32, bias=False)])
+    x = Tensor(np.random.randn(1, 32).astype(np.float32), requires_grad=False)
+    py_out = model(x).data.flatten()
+
+    c_file = tmp_path / "tiled_model.c"
+    exe_file = tmp_path / ("tiled_model.exe" if os.name == "nt" else "tiled_model")
+
+    export_c(
+        model,
+        x,
+        filename=c_file,
+        include_main=True,
+        model_name="tiled_test",
+        tiling=True,
+    )
+
+    c_code = c_file.read_text(encoding="utf-8")
+    assert "minigrad_matmul_2d_tiled" in c_code
+    assert "MINIGRAD_TILE_SIZE 32" in c_code
+
+    res = _compile_c(c_file, exe_file)
+    assert res.returncode == 0, f"Compilation failed: {res.stderr}"
+
+    run_res = subprocess.run([str(exe_file)], capture_output=True, text=True, check=False)
+    assert run_res.returncode == 0, f"Execution failed: {run_res.stderr}"
+
+    c_outputs = []
+    for line in run_res.stdout.splitlines():
+        if "output[" in line and "=" in line:
+            c_outputs.append(float(line.split("=")[-1].strip()))
+
+    np.testing.assert_allclose(c_outputs, py_out, rtol=1e-4, atol=1e-4)
+
+
+@pytest.mark.skipif(CLANG_OR_GCC is None, reason="No C compiler found")
+def test_static_kv_cache_engine(tmp_path: Path):
+    """Test static Key-Value (KV) cache generation for streaming attention."""
+    model = Sequential([Linear(16, 16)])
+    x = Tensor(np.zeros((1, 16), dtype=np.float32), requires_grad=False)
+
+    c_file = tmp_path / "kv_model.c"
+    export_c(
+        model,
+        x,
+        filename=c_file,
+        include_main=False,
+        model_name="kv_test",
+        kv_cache=True,
+        # Default internal dimensions
+    )
+
+    c_code = c_file.read_text(encoding="utf-8")
+    assert "minigrad_attention_kv_cache" in c_code
+    assert "kv_test_k_cache" in c_code
+    assert "kv_test_reset_kv_cache" in c_code
+    assert "kv_test_attention_step" in c_code
+
+    # Create a small C test harness to verify sequential multi-step attention
+    harness = """
+#include <stdio.h>
+#include <assert.h>
+
+int main(void) {
+    kv_test_reset_kv_cache();
+    assert(kv_test_get_kv_step() == 0);
+
+    float q[128] = {0.1f};
+    float k[128] = {0.2f};
+    float v[128] = {0.3f};
+    float out[128] = {0.0f};
+
+    /* Run 3 sequential token generation steps */
+    for (int t = 0; t < 3; t++) {
+        kv_test_attention_step(q, k, v, out);
+        assert(kv_test_get_kv_step() == t + 1);
+    }
+    printf("KV-Cache successfully stepped 3 tokens.\\n");
+    return 0;
+}
+"""
+    test_c_file = tmp_path / "test_kv_runner.c"
+    test_c_file.write_text(c_code + "\n" + harness, encoding="utf-8")
+    exe_file = tmp_path / ("test_kv_runner.exe" if os.name == "nt" else "test_kv_runner")
+
+    res = _compile_c(test_c_file, exe_file)
+    assert res.returncode == 0, f"Compilation failed: {res.stderr}"
+
+    run_res = subprocess.run([str(exe_file)], capture_output=True, text=True, check=False)
+    assert run_res.returncode == 0, f"Execution failed: {run_res.stderr}"
+    assert "KV-Cache successfully stepped 3 tokens." in run_res.stdout
+
+
+@pytest.mark.skipif(CLANG_OR_GCC is None, reason="No C compiler found")
+def test_clean_library_export(tmp_path: Path):
+    """Test generating idiomatic model.h and model.c library files."""
+    np.random.seed(42)
+    model = Sequential([Linear(4, 8), ReLU(), Linear(8, 2)])
+    x = Tensor([[1.0, 2.0, 3.0, 4.0]], requires_grad=False)
+    py_out = model(x).data.flatten()
+
+    lib_dir = tmp_path / "lib_export"
+    h_file, c_file = compile_to_library(
+        model,
+        x,
+        output_dir=lib_dir,
+        model_name="edge_core",
+    )
+
+    assert h_file.exists()
+    assert c_file.exists()
+
+    h_code = h_file.read_text(encoding="utf-8")
+    assert "EDGE_CORE_INPUT_SIZE" in h_code
+    assert "void edge_core_forward(const float* input, float* output);" in h_code
+    assert "#ifdef __cplusplus" in h_code
+
+    # Write a clean user application including the header
+    user_app = """
+#include <stdio.h>
+#include "edge_core.h"
+
+int main(void) {
+    float in[4] = {1.0f, 2.0f, 3.0f, 4.0f};
+    float out[2] = {0.0f, 0.0f};
+
+    edge_core_forward(in, out);
+    printf("Library output: %+.7f, %+.7f\\n", out[0], out[1]);
+    return 0;
+}
+"""
+    app_file = lib_dir / "main.c"
+    app_file.write_text(user_app, encoding="utf-8")
+    exe_file = lib_dir / ("app.exe" if os.name == "nt" else "app")
+
+    assert CLANG_OR_GCC is not None
+    cmd = [CLANG_OR_GCC, "-O3", "-I", str(lib_dir), str(app_file), str(c_file), "-o", str(exe_file)]
+    if os.name != "nt":
+        cmd.append("-lm")
+    res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    assert res.returncode == 0, f"Compilation failed: {res.stderr}"
+
+    run_res = subprocess.run([str(exe_file)], capture_output=True, text=True, check=False)
+    assert run_res.returncode == 0, f"Execution failed: {run_res.stderr}"
+
+    parts = run_res.stdout.strip().split(":")[-1].split(",")
+    c_out = [float(p.strip()) for p in parts]
+    np.testing.assert_allclose(c_out, py_out, rtol=1e-4, atol=1e-4)

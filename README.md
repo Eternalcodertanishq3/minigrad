@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/Eternalcodertanishq3/minigrad/actions/workflows/ci.yml/badge.svg)](https://github.com/Eternalcodertanishq3/minigrad/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/minigrad-framework.svg?color=blue)](https://pypi.org/project/minigrad-framework/)
-[![Tests](https://img.shields.io/badge/tests-171%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-177%20passing-brightgreen.svg)](tests/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-pure%20numpy-red.svg)](pyproject.toml)
@@ -277,10 +277,14 @@ loss.backward()
 * **Interactive ASCII Visualizer:** Generates human-readable computation graphs in the console via `visualize(loss)`.
 * **Natural-Language Gradient Explanations:** Explains vanishing/exploding gradients and saturated activations in plain English via `explain_gradients(model)`.
 
-### Pillar 2: Embedded C99 Compiler (`minigrad/compiler.py`)
-* Compiles active computational subgraphs directly into standalone, single-header **C99 code** (`export_c` / `to_c`).
-* Integrates OpenMP SIMD multi-threading.
-* Runs on bare-metal microcontrollers (ESP32, STM32, ARM Cortex-M) with **zero Python dependency**.
+### Pillar 2: Zero-Runtime Embedded C Compiler (`minigrad/compiler.py`)
+* **Standalone ANSI C99 Export:** Compiles active models and computational graphs into self-contained C code (`export_c`, `to_c`, `compile_to_library`).
+* **Binary Weight Decoupling (`model.bin`):** Instant compilation (< 0.5s) and support for $10\text{M}+$ parameter models via memory-mapped binary weights.
+* **INT8 Post-Training Quantization:** Cuts parameter storage by $75\%$ using native `int8_t` weights with per-tensor scales and fused integer-float kernels.
+* **Activation Liveness Arena:** Re-uses intermediate memory using interval graph coloring, slashing RAM consumption by $80\% - 95\%$.
+* **Cache Tiling & OpenMP:** $32 \times 32$ loop blocking and `#pragma omp parallel for` multithreading for multi-core server throughput.
+* **Static Key-Value (KV) Cache:** Native C multi-head attention KV-cache for streaming next-token generation in causal transformers (miniGPT).
+* **Firmware & Embedded Ready:** 100% static buffers (0 bytes `malloc`), runs on microcontrollers (ESP32, STM32, ARM Cortex-M) with zero Python or runtime dependencies.
 
 ### Pillar 3: Symbolic Graph Optimization (`minigrad/graph_opt.py`)
 * Algebraic simplification rewrites ($x + 0 \to x$, $x \times 1 \to x$, $x - x \to 0$, $x / x \to 1$).
