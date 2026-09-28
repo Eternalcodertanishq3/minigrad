@@ -305,7 +305,7 @@ loss.backward()
 * **Greedy Liveness-Based Interval Memory Reuse:** Re-uses intermediate memory using greedy interval graph coloring on activation liveness intervals, reducing activation RAM consumption by up to $35\%-90\%$ depending on DAG topology.
 * **Cache Tiling & OpenMP:** $32 \times 32$ loop blocking and `#pragma omp parallel for` multithreading for multi-core server throughput.
 * **Static Key-Value (KV) Cache:** Native C multi-head attention KV-cache for streaming next-token generation in causal transformers (miniGPT).
-* **Firmware & Embedded Ready:** 100% static buffers (0 bytes `malloc`), runs on microcontrollers (ESP32, STM32, ARM Cortex-M) with zero Python or runtime dependencies.
+* **Firmware & Embedded Ready:** 100% static buffers in generated deployment models (0 bytes `malloc`; auxiliary benchmark timing harness dynamically allocates sample timing arrays), runs on microcontrollers (ESP32, STM32, ARM Cortex-M) with zero Python or runtime dependencies.
 
 ### Pillar 3: Symbolic Graph Optimization (`minigrad/graph_opt.py`)
 * Algebraic simplification rewrites ($x + 0 \to x$, $x \times 1 \to x$, $x - x \to 0$, $x / x \to 1$).
@@ -313,9 +313,9 @@ loss.backward()
 * Kernel fusion: fuses Linear + ReLU / GELU into single-loop execution kernels, eliminating intermediate memory allocations.
 
 ### Pillar 4: Pure Functional `vmap` & DP-SGD (`minigrad/vmap.py`, `minigrad/dp.py`)
-* **Functional Batching & Per-Sample Mapping (`vmap`):** Vectorizes single-example functions across arbitrary input batch dimensions without explicit outer Python loops.
+* **Functional Batching & Per-Sample Mapping (`vmap`):** Provides a clean functional vectorized-map interface across arbitrary input batch dimensions via per-sample mapping and batch reconstruction.
 * **Reverse-Mode Batched Jacobian Calculation (`jacrev` / `batched_jacobian`):** Efficient per-sample vectorization running **$7.6\times$ faster** than sequential loops.
-* **Differential Privacy Mechanism & Prototype (DP-SGD):** Implements per-sample gradient clipping and calibrated Gaussian noise injection with Rényi Differential Privacy (RDP) accounting for subsampled Gaussian mechanisms across bounded training steps.
+* **Differential Privacy Mechanism & Prototype (DP-SGD):** Implements per-sample gradient clipping and calibrated Gaussian noise injection with privacy telemetry (bounding sensitivity $||\Delta||_2 \le C$ and reporting sample clipping fractions and noise-to-signal ratios).
 
 ---
 
@@ -352,7 +352,7 @@ python examples/16_spanda_neuromorphic_snn.py       # S.P.A.N.D.A. Neuromorphic 
 ## 🧪 Verification & Testing
 
 miniGrad enforces rigorous mathematical and regression testing across 325 collected test cases, differential suites, and static typing:
-* **325 tests collected**: **287 tests** pass natively in pure-NumPy with zero external dependencies (the default CI environment), and **38 optional cross-framework parity tests** execute and pass when PyTorch and HuggingFace Transformers are installed.
+* **325 tests collected**: **287 tests** pass natively in pure-NumPy with zero external dependencies (the default CI environment), and **38 optional cross-framework parity tests** execute and pass when PyTorch and HuggingFace Transformers are installed (in the full development environment with optional frameworks installed, **325 / 325 pass**).
 
 ```bash
 # Run complete test suite (325 tests across contracts, lifecycles, random DAGs, compiler benchmarks)
