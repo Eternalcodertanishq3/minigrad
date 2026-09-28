@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/Eternalcodertanishq3/minigrad/actions/workflows/ci.yml/badge.svg)](https://github.com/Eternalcodertanishq3/minigrad/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/minigrad-framework.svg?color=blue)](https://pypi.org/project/minigrad-framework/)
-[![Tests](https://img.shields.io/badge/tests-319%20collected%20%7C%20281%20zero--dep-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-325%20collected%20%7C%20287%20zero--dep-brightgreen.svg)](tests/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-pure%20numpy-red.svg)](pyproject.toml)
@@ -84,7 +84,7 @@ miniGrad maintains explicit maturity boundaries between verified production-grad
 | Capability / Metric | `miniGrad` | `PyTorch` | `micrograd` / `tinygrad` |
 | :--- | :---: | :---: | :---: |
 | **Dependencies** | **Zero (Pure NumPy)** | ~2.5 GB C++/CUDA binaries | Pure Python / minimal C |
-| **Full Test Suite Speed** | **319 tests collected (281 zero-dep CI + 38 parity) in ~25s** | Minutes / Hours | Few dozen tests |
+| **Full Test Suite Speed** | **325 tests collected (287 zero-dep CI + 38 parity) in ~30s** | Minutes / Hours | Few dozen tests |
 | **Glass-Box Root-Cause NaN Debugger** | **Native Built-in** | `detect_anomaly` (slow) | ❌ None |
 | **Zero-Runtime C Code Generator** | **Native (`export_c`)** | TorchScript / ExecuTorch | TinyGrad has C-gen |
 | **Symbolic Graph Optimization & Fusion** | **Native Built-in** | TorchDynamo / Inductor | TinyGrad has fusion |
@@ -351,11 +351,11 @@ python examples/16_spanda_neuromorphic_snn.py       # S.P.A.N.D.A. Neuromorphic 
 
 ## 🧪 Verification & Testing
 
-miniGrad enforces rigorous mathematical and regression testing across 319 collected test cases, differential suites, and static typing:
-* **319 tests collected**: **281 tests** pass in zero-dependency pure-NumPy CI, and **38 optional cross-framework parity tests** execute and pass when PyTorch and HuggingFace Transformers are installed.
+miniGrad enforces rigorous mathematical and regression testing across 325 collected test cases, differential suites, and static typing:
+* **325 tests collected**: **287 tests** pass natively in pure-NumPy with zero external dependencies (the default CI environment), and **38 optional cross-framework parity tests** execute and pass when PyTorch and HuggingFace Transformers are installed.
 
 ```bash
-# Run complete test suite (319 tests across contracts, lifecycles, random DAGs, compiler benchmarks)
+# Run complete test suite (325 tests across contracts, lifecycles, random DAGs, compiler benchmarks)
 python -m pytest
 
 # Run strict static type checking (0 errors across 67 source files)
@@ -368,20 +368,20 @@ python -m ruff check minigrad tests
 ```text
 ============================= test session starts =============================
 platform win32 -- Python 3.11.0, pytest-8.3.4
-collected 319 items
+collected 325 items
 
 tests/test_api_contracts.py ............                                 [  3%]
 tests/test_compiler.py .............                                     [  7%]
 tests/test_compiler_benchmarks.py ...                                    [  8%]
-tests/test_contracts.py ...............                                  [ 13%]
-tests/test_double_backward.py .......                                    [ 15%]
-tests/test_glassbox.py ........                                          [ 18%]
-tests/test_grad_check.py ..................                              [ 23%]
-tests/test_graph_opt.py ............                                     [ 27%]
-tests/test_layers.py ............                                        [ 31%]
-tests/test_lifecycle.py ...........                                      [ 34%]
-tests/test_new_features.py ...................                           [ 40%]
-tests/test_ops.py ......................                                 [ 47%]
+tests/test_contracts.py ...............                                  [ 12%]
+tests/test_double_backward.py .............                              [ 16%]
+tests/test_glassbox.py ........                                          [ 19%]
+tests/test_grad_check.py ..................                              [ 24%]
+tests/test_graph_opt.py ............                                     [ 28%]
+tests/test_layers.py ............                                        [ 32%]
+tests/test_lifecycle.py ...........                                      [ 35%]
+tests/test_new_features.py ...................                           [ 41%]
+tests/test_ops.py ......................                                 [ 48%]
 tests/test_optim.py .....                                                [ 49%]
 tests/test_public_api.py .......                                         [ 51%]
 tests/test_random_dag_opt.py ........................................... [ 64%]
@@ -394,7 +394,8 @@ tests/test_vmap.py ...........                                           [ 95%]
 tests/test_avyaya.py ........                                            [ 97%]
 tests/test_pramana.py ........                                           [100%]
 
-============================ 319 passed in 28.88s =============================
+============================ 325 passed in 31.68s =============================
+(In pure-NumPy CI without optional PyTorch: 287 passed, 38 skipped in ~12s)
 ```
 
 ---
