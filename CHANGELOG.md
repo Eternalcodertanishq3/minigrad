@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.0] - 2026-09-28
+
+### 🛡️ Hardened & Verified
+- **Autograd Lifecycle State Machine & Consumer Safety:**
+  - Implemented formal `LIVE` vs `FREED` graph state machine with weakref consumer tracking for multi-branch/shared subgraphs.
+  - Calling `backward(retain_graph=False)` transitions the graph to `FREED`, releasing intermediate backward closures and raising clear `RuntimeError` upon invalid re-execution.
+  - Full `retain_graph` support in both `Tensor.backward()` and `autograd.grad()`.
+- **Mathematical Correctness & Dtype System:**
+  - Removed artificial epsilon clamps (`+ 1e-9`) from `Tensor.log()` and `Tensor.__pow__()` base derivatives, guaranteeing exact mathematical limits while relying on Glass-Box anomaly detection for non-finite diagnosis.
+  - Replaced ad-hoc CrossEntropyLoss log-probabilities with pure, numerically stable LogSumExp formulation (`logits - logsumexp(logits)`), eliminating gradient distortion on extreme logits.
+  - Complete dtype preservation and NumPy-aligned type promotion across all binary operations with explicit `.dtype` and `.to(dtype)` support.
+- **Higher-Order Hessians & Differentiable Graph Construction:**
+  - Rewrote `hessian(output, inputs, create_graph=True)` to construct genuine differentiable computational graph nodes, enabling 3rd-order and higher derivatives (crucial for Physics-Informed Neural Networks).
+  - Multi-input heterogeneous tensor evaluation support in `hessian()`.
+  - Added comprehensive VJP registry coverage (`to`, `fused_linear`, `fused_linear_relu`, `clip`, `softmax`, etc.) with explicit `NotImplementedError` on unknown ops.
+- **Graph Optimizer & SafeTensors Hardening:**
+  - SafeTensors Option B memory-safe loading with owned ndarray buffers (`np.frombuffer(...).copy()`), preventing file-backed buffer lock-ups.
+  - Canonical reconstructor registry (`register_reconstructor`) in `graph_opt.py`, eliminating ad-hoc fallback closure copies.
+  - Rigorous 3-layer differential validation and 100-DAG property-based random graph differential stress testing suite.
+- **Compiler Benchmarking & Methodology Rebuild:**
+  - In-process C benchmark harness with high-resolution internal kernel timers over 1,000+ iterations.
+  - Calibrated scientific documentation across S.U.T.R.A., A.V.Y.A.Y.A., P.R.A.M.A.N.A., S.P.A.N.D.A., DP-SGD, vmap, and Arena Allocator.
+  - Test suite expanded to **325 collected tests** (287 zero-dependency CI + 38 optional cross-framework parity).
+
+---
+
 ## [1.1.0] - 2026-09-27
 
 ### 🚀 Added
