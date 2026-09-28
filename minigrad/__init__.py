@@ -17,7 +17,7 @@ Usage:
     optimizer = Adam(model.parameters(), lr=1e-3)
 """
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 from minigrad.tensor import Tensor
 from minigrad.graph import topological_sort, trace, print_graph
@@ -46,6 +46,8 @@ from minigrad.dp import (
     apply_dp_gradients,
     compute_dp_sgd_step,
     PrivacyTelemetry,
+    RDPAccountant,
+    compute_rdp_epsilon,
 )
 from minigrad.sutra import (
     SUTRA,
@@ -122,6 +124,8 @@ __all__ = [
     "apply_dp_gradients",
     "compute_dp_sgd_step",
     "PrivacyTelemetry",
+    "RDPAccountant",
+    "compute_rdp_epsilon",
     "SUTRA",
     "NeuralODE",
     "odeint",

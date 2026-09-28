@@ -10,6 +10,7 @@ Implements the formal Gaussian Mechanism for Differential Privacy:
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
@@ -31,6 +32,11 @@ class PrivacyTelemetry:
     min_pre_clip_norm: float
     fraction_clipped: float
     noise_to_signal_ratio: float
+    cumulative_steps: Optional[int] = None
+    sample_rate: Optional[float] = None
+    cumulative_epsilon: Optional[float] = None
+    target_delta: Optional[float] = None
+    optimal_alpha: Optional[int] = None
 
     def summary(self) -> str:
         """Render a clean, terminal-safe ASCII report of privacy parameters and gradient telemetry."""
@@ -48,16 +54,25 @@ class PrivacyTelemetry:
             f"  * Fraction of Samples Clipped: {self.fraction_clipped * 100.0:.1f}%",
             f"  * Noise-to-Signal Ratio:       {self.noise_to_signal_ratio:.4f}",
             f"  * Privacy Sensitivity:         BOUNDED (||Delta||_2 <= {self.max_norm:.4f})",
-            "=" * 74,
         ]
+        if self.cumulative_epsilon is not None and self.target_delta is not None:
+            lines.append(
+                f"  * Cumulative Privacy:          eps = {self.cumulative_epsilon:.4f} @ delta = {self.target_delta:.1e} (alpha={self.optimal_alpha})"
+            )
+            if self.cumulative_steps is not None:
+                lines.append(f"  * Cumulative Steps:            {self.cumulative_steps}")
+        lines.append("=" * 74)
         return "\n".join(lines)
 
     def __repr__(self) -> str:
-        return (
+        base = (
             f"PrivacyTelemetry(B={self.batch_size}, C={self.max_norm:.2f}, "
             f"noise_multiplier={self.noise_multiplier:.2f}, "
             f"clipped={self.fraction_clipped * 100.0:.1f}%)"
         )
+        if self.cumulative_epsilon is not None:
+            base = base[:-1] + f", eps={self.cumulative_epsilon:.2f})"
+        return base
 
 
 def clip_per_sample_gradients(
@@ -195,18 +210,25 @@ def compute_dp_sgd_step(
     max_norm: float,
     noise_multiplier: float,
     seed: Optional[int] = None,
+    accountant: Optional[RDPAccountant] = None,
+    sample_rate: Optional[float] = None,
+    target_delta: Optional[float] = None,
 ) -> Tuple[Union[Dict[str, Tensor], List[Tensor]], PrivacyTelemetry]:
     """
     One-step Differentially Private aggregation:
     1. Clips per-sample gradients to `max_norm`.
     2. Adds calibrated Gaussian noise.
     3. Emits comprehensive privacy and gradient health telemetry.
+    4. Optionally tracks cumulative Rényi Differential Privacy (RDP) expenditure.
 
     Args:
         per_sample_grads: Per-sample gradients [B, ...].
         max_norm:         Clipping bound C.
         noise_multiplier: Noise ratio sigma / C.
         seed:             Optional random seed.
+        accountant:       Optional RDPAccountant instance to accumulate privacy loss.
+        sample_rate:      Subsampling ratio q = batch_size / total_samples (default: B / B = 1.0).
+        target_delta:     Target delta for cumulative epsilon conversion.
 
     Returns:
         Tuple of (private_grads, PrivacyTelemetry).
@@ -241,6 +263,19 @@ def compute_dp_sgd_step(
 
     noise_to_signal = float(noise_std / (signal_norm + 1e-12))
 
+    # 4. Optional RDP Accounting
+    cum_eps: Optional[float] = None
+    opt_alpha: Optional[int] = None
+    cum_steps: Optional[int] = None
+    q = sample_rate if sample_rate is not None else 1.0
+
+    if accountant is not None:
+        if noise_multiplier > 0:
+            accountant.step(noise_multiplier=noise_multiplier, sample_rate=q, num_steps=1)
+        cum_steps = accountant.steps
+        if target_delta is not None:
+            cum_eps, opt_alpha = accountant.get_epsilon(target_delta=target_delta)
+
     telemetry = PrivacyTelemetry(
         batch_size=batch_size,
         max_norm=max_norm,
@@ -251,6 +286,190 @@ def compute_dp_sgd_step(
         min_pre_clip_norm=float(np.min(pre_clip_norms)) if batch_size > 0 else 0.0,
         fraction_clipped=fraction_clipped,
         noise_to_signal_ratio=noise_to_signal,
+        cumulative_steps=cum_steps,
+        sample_rate=q,
+        cumulative_epsilon=cum_eps,
+        target_delta=target_delta,
+        optimal_alpha=opt_alpha,
     )
 
     return private_grads, telemetry
+
+
+# ── Analytical Rényi Differential Privacy (RDP) Accountant ──────────
+
+def compute_step_rdp(sample_rate: float, noise_multiplier: float, alpha: int) -> float:
+    """
+    Computes the exact analytical Rényi Differential Privacy (RDP) at integer order `alpha`
+    for a single step of a subsampled Gaussian mechanism.
+
+    Formulation:
+    - For full-batch (q=1): RDP(alpha) = alpha / (2 * sigma^2) (Mironov 2017)
+    - For subsampled Gaussian (0 < q < 1):
+      S(alpha) = sum_{k=0}^alpha binom(alpha, k) * q^k * (1-q)^(alpha-k) * exp(k*(k-1) / (2*sigma^2))
+      RDP(alpha) <= log(S(alpha)) / (alpha - 1) (Wang, Balle, Kasiviswanathan 2019, Theorem 11)
+
+    Evaluated via numerically stable log-sum-exp to eliminate floating overflow.
+    """
+    if alpha < 2:
+        raise ValueError(f"alpha must be an integer >= 2, got {alpha}")
+    if noise_multiplier <= 0:
+        raise ValueError(f"noise_multiplier must be strictly positive, got {noise_multiplier}")
+    if sample_rate <= 0.0:
+        return 0.0
+    if sample_rate >= 1.0:
+        return float(alpha) / (2.0 * (noise_multiplier ** 2))
+
+    q = float(sample_rate)
+    sigma2 = float(noise_multiplier ** 2)
+
+    # Compute sum in log-space: log_term_k = log(binom) + k*log(q) + (alpha-k)*log(1-q) + k*(k-1)/(2*sigma^2)
+    log_terms = []
+    for k in range(alpha + 1):
+        log_comb = math.log(math.comb(alpha, k))
+        log_qk = k * math.log(q) if k > 0 else 0.0
+        log_1_minus_q = (alpha - k) * math.log(1.0 - q) if (alpha - k) > 0 else 0.0
+        log_exp_term = (k * (k - 1)) / (2.0 * sigma2) if k >= 2 else 0.0
+        log_terms.append(log_comb + log_qk + log_1_minus_q + log_exp_term)
+
+    max_log = max(log_terms)
+    log_sum = max_log + math.log(sum(math.exp(lt - max_log) for lt in log_terms))
+    return float(log_sum / (alpha - 1.0))
+
+
+def compute_rdp(
+    sample_rate: float,
+    noise_multiplier: float,
+    steps: int,
+    orders: Sequence[int],
+) -> np.ndarray:
+    """
+    Computes cumulative RDP across a sequence of orders for `steps` iterations.
+
+    Under RDP composition, privacy loss is strictly additive:
+    RDP_total(alpha) = steps * RDP_step(alpha).
+    """
+    if steps < 0:
+        raise ValueError(f"steps must be non-negative, got {steps}")
+    step_rdps = [compute_step_rdp(sample_rate, noise_multiplier, int(a)) for a in orders]
+    return np.array(step_rdps, dtype=np.float64) * steps
+
+
+def get_privacy_spent(
+    orders: Sequence[int],
+    rdp: Union[Sequence[float], np.ndarray],
+    target_delta: float,
+) -> Tuple[float, int]:
+    """
+    Converts accumulated RDP into an (epsilon, delta)-differential privacy guarantee
+    by minimizing over all evaluated orders:
+    epsilon(delta) = min_{alpha > 1} ( RDP(alpha) + log(1/delta) / (alpha - 1) )
+
+    Args:
+        orders:       Sequence of integer orders alpha >= 2.
+        rdp:          Accumulated RDP values corresponding to orders.
+        target_delta: Target delta in (0, 1).
+
+    Returns:
+        Tuple of (optimal_epsilon, optimal_alpha).
+    """
+    if not (0.0 < target_delta < 1.0):
+        raise ValueError(f"target_delta must be in (0, 1), got {target_delta}")
+    if len(orders) != len(rdp):
+        raise ValueError(f"orders ({len(orders)}) and rdp ({len(rdp)}) lengths must match")
+
+    eps_candidates = [
+        float(rdp[i] + math.log(1.0 / target_delta) / (int(orders[i]) - 1.0))
+        for i in range(len(orders))
+    ]
+    min_idx = int(np.argmin(eps_candidates))
+    return float(eps_candidates[min_idx]), int(orders[min_idx])
+
+
+def compute_rdp_epsilon(
+    steps: int,
+    noise_multiplier: float,
+    target_delta: float,
+    sample_rate: float = 1.0,
+    orders: Optional[Sequence[int]] = None,
+) -> Tuple[float, int]:
+    """
+    High-level convenience function computing optimal (epsilon, delta)-DP bound
+    for DP-SGD training under a subsampled Gaussian mechanism.
+
+    Args:
+        steps:            Total optimization iterations.
+        noise_multiplier: Ratio sigma / C.
+        target_delta:     Target delta (e.g. 1e-5).
+        sample_rate:      Batch subsampling ratio q = B / N (default: 1.0).
+        orders:           Optional sequence of orders alpha >= 2 (default: 2..64).
+
+    Returns:
+        Tuple of (optimal_epsilon, optimal_alpha).
+    """
+    evaluated_orders = list(range(2, 65)) if orders is None else [int(a) for a in orders if a >= 2]
+    rdp = compute_rdp(sample_rate, noise_multiplier, steps, evaluated_orders)
+    return get_privacy_spent(evaluated_orders, rdp, target_delta)
+
+
+class RDPAccountant:
+    """
+    Rényi Differential Privacy (RDP) Accountant for Subsampled Gaussian Mechanisms.
+
+    Implements analytical RDP composition and conversion to (epsilon, delta)-DP based on:
+    - Mironov (2017): "Rényi Differential Privacy"
+    - Wang, Balle, Kasiviswanathan (2019): "Subsampled Rényi Differential Privacy
+      of Gaussian Mechanism and its Application to Deep Learning"
+
+    Tracks cumulative privacy expenditure across discrete training iterations with
+    analytical bounds over integer Rényi orders alpha in [2, 64].
+    """
+
+    def __init__(self, orders: Optional[Sequence[int]] = None) -> None:
+        if orders is None:
+            self.orders = list(range(2, 65))
+        else:
+            self.orders = sorted([int(a) for a in orders if a >= 2])
+            if not self.orders:
+                raise ValueError("orders must contain at least one integer >= 2")
+        self._rdp = np.zeros(len(self.orders), dtype=np.float64)
+        self.steps = 0
+
+    def step(self, noise_multiplier: float, sample_rate: float, num_steps: int = 1) -> None:
+        """
+        Record one or more training steps under a subsampled Gaussian mechanism.
+
+        Args:
+            noise_multiplier: Ratio sigma / C (must be > 0).
+            sample_rate:      Subsampling ratio q = batch_size / total_samples (0 <= q <= 1).
+            num_steps:        Number of steps to accumulate (default: 1).
+        """
+        if noise_multiplier <= 0:
+            raise ValueError(f"noise_multiplier must be strictly positive, got {noise_multiplier}")
+        if not (0.0 <= sample_rate <= 1.0):
+            raise ValueError(f"sample_rate must be in [0, 1], got {sample_rate}")
+        if num_steps < 1:
+            raise ValueError(f"num_steps must be >= 1, got {num_steps}")
+
+        step_rdps = [compute_step_rdp(sample_rate, noise_multiplier, a) for a in self.orders]
+        self._rdp += np.array(step_rdps, dtype=np.float64) * num_steps
+        self.steps += num_steps
+
+    def get_epsilon(self, target_delta: float) -> Tuple[float, int]:
+        """
+        Computes the minimum cumulative epsilon for a given target delta:
+        epsilon(delta) = min_{alpha > 1} ( RDP(alpha) + log(1/delta) / (alpha - 1) )
+
+        Args:
+            target_delta: Target failure probability delta in (0, 1).
+
+        Returns:
+            Tuple of (optimal_epsilon, optimal_alpha).
+        """
+        return get_privacy_spent(self.orders, self._rdp, target_delta)
+
+    def reset(self) -> None:
+        """Reset the accumulated privacy budget and step count."""
+        self._rdp.fill(0.0)
+        self.steps = 0
+

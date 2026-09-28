@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/Eternalcodertanishq3/minigrad/actions/workflows/ci.yml/badge.svg)](https://github.com/Eternalcodertanishq3/minigrad/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/minigrad-framework.svg?color=blue)](https://pypi.org/project/minigrad-framework/)
-[![Tests](https://img.shields.io/badge/tests-325%20collected%20%7C%20287%20zero--dep-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-363%20collected%20%7C%20325%20zero--dep-brightgreen.svg)](tests/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-pure%20numpy-red.svg)](pyproject.toml)
@@ -15,7 +15,7 @@
 
 *Continuous-Depth Neural ODEs · Zero-Memory Reversible Computing · Analytical Uncertainty Tensors · Neuro-Symbolic Logic · Neuromorphic Spiking Dynamics · Embedded C Compiler*
 
-[Quick Start](#-quick-start) • [Component Maturity](#-component-maturity--status-matrix) • [The 4 Pillars](#-the-4-foundational-pillars) • [The 5 Frontier Innovations](#-the-5-frontier-innovations) • [Examples](#-runnable-examples) • [Verification](#-verification)
+[Quick Start](#-quick-start) • [Component Maturity](#-component-maturity--status-matrix) • [The 4 Pillars](#-the-4-foundational-pillars) • [The 5 Frontier Innovations](#-the-5-frontier-innovations) • [Specifications](docs/SPECIFICATIONS.md) • [Examples](#-runnable-examples) • [Verification](#-verification)
 
 </div>
 
@@ -148,6 +148,7 @@ optimizer.step()
 ---
 
 ## 🔬 The 5 Frontier Innovations
+> For formal mathematical formulations, computational invariants, known approximations, and validation standards across all research modules, see [docs/SPECIFICATIONS.md](docs/SPECIFICATIONS.md).
 
 ### 1. S.U.T.R.A. (Continuous-Depth Neural ODEs)
 *Sanskrit: सूत्र (Thread / Continuous Continuity)*  
@@ -315,7 +316,7 @@ loss.backward()
 ### Pillar 4: Pure Functional `vmap` & DP-SGD (`minigrad/vmap.py`, `minigrad/dp.py`)
 * **Functional Batching & Per-Sample Mapping (`vmap`):** Provides a clean functional vectorized-map interface across arbitrary input batch dimensions via per-sample mapping and batch reconstruction.
 * **Reverse-Mode Batched Jacobian Calculation (`jacrev` / `batched_jacobian`):** Efficient per-sample vectorization running **$7.6\times$ faster** than sequential loops.
-* **Differential Privacy Mechanism & Prototype (DP-SGD):** Implements per-sample gradient clipping and calibrated Gaussian noise injection with privacy telemetry (bounding sensitivity $||\Delta||_2 \le C$ and reporting sample clipping fractions and noise-to-signal ratios).
+* **Differential Privacy Engine & Analytical RDP Accountant (`dp.py`):** Implements per-sample gradient clipping, calibrated Gaussian noise injection, and an exact analytical Rényi Differential Privacy (`RDPAccountant`, `compute_rdp_epsilon`) accountant based on Wang et al. (2019) computing tight cumulative $(\epsilon, \delta)$-DP bounds across subsampled training steps.
 
 ---
 
@@ -351,14 +352,14 @@ python examples/16_spanda_neuromorphic_snn.py       # S.P.A.N.D.A. Neuromorphic 
 
 ## 🧪 Verification & Testing
 
-miniGrad enforces rigorous mathematical and regression testing across 325 collected test cases, differential suites, and static typing:
-* **325 tests collected**: **287 tests** pass natively in pure-NumPy with zero external dependencies (the default CI environment), and **38 optional cross-framework parity tests** execute and pass when PyTorch and HuggingFace Transformers are installed (in the full development environment with optional frameworks installed, **325 / 325 pass**).
+miniGrad enforces rigorous mathematical and regression testing across 363 collected test cases, differential suites, and static typing:
+* **363 tests collected**: **325 tests** pass natively in pure-NumPy with zero external dependencies (the default CI environment), and **38 optional cross-framework parity tests** execute and pass when PyTorch and HuggingFace Transformers are installed (in the full development environment with optional frameworks installed, **363 / 363 pass**).
 
 ```bash
-# Run complete test suite (325 tests across contracts, lifecycles, random DAGs, compiler benchmarks)
+# Run complete test suite (363 tests across contracts, lifecycles, random DAGs, compiler benchmarks)
 python -m pytest
 
-# Run strict static type checking (0 errors across 67 source files)
+# Run strict static type checking (0 errors across 70 source files)
 python -m mypy minigrad tests
 
 # Run linter & formatter checks (0 issues)
