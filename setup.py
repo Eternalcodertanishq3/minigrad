@@ -10,10 +10,6 @@ Publish to PyPI:
 """
 import re
 from pathlib import Path
-from setuptools import find_packages, setup
-
-with open("README.md", "r", encoding="utf-8") as fh:
-    long_description = fh.read()
 
 
 def get_version() -> str:
@@ -25,6 +21,11 @@ def get_version() -> str:
 
 
 if __name__ == "__main__":
+    from setuptools import find_packages, setup
+
+    readme_path = Path(__file__).parent / "README.md"
+    long_description = readme_path.read_text(encoding="utf-8") if readme_path.exists() else ""
+
     setup(
         name="minigrad-framework",
         version=get_version(),
