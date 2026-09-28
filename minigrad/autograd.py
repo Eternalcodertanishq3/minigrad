@@ -16,6 +16,7 @@ from typing import Dict, List, Optional, Sequence, Set, Tuple, Union
 import numpy as np
 
 from minigrad.contracts import GRAPH_FREED_ERROR_MSG, GraphState
+from minigrad.ops import concat, stack
 from minigrad.tensor import Tensor
 
 # ── VJP Unbroadcasting Helper ────────────────────────────────────────
@@ -134,13 +135,23 @@ def _compute_vjp(node: Tensor, g: Tensor) -> Tuple[Optional[Tensor], ...]:
 
     elif op == "relu":
         (a,) = children
-        mask = Tensor((a.data > 0).astype(np.float64))
+        mask = Tensor((a.data > 0).astype(a.data.dtype))
         return (g * mask if a.requires_grad else None,)
 
     elif op == "sigmoid":
         (a,) = children
         one = Tensor(np.ones_like(node.data))
         deriv = node * (one - node)
+        return (g * deriv if a.requires_grad else None,)
+
+    elif op == "gelu":
+        (a,) = children
+        c = np.sqrt(2.0 / np.pi)
+        u = c * (a + 0.044715 * (a ** 3))
+        tanh_u = u.tanh()
+        sech2 = Tensor(np.ones_like(a.data, dtype=a.data.dtype)) - (tanh_u ** 2)
+        du_dx = c * (Tensor(np.ones_like(a.data, dtype=a.data.dtype)) + 3.0 * 0.044715 * (a ** 2))
+        deriv = 0.5 * (Tensor(np.ones_like(a.data, dtype=a.data.dtype)) + tanh_u) + 0.5 * a * sech2 * du_dx
         return (g * deriv if a.requires_grad else None,)
 
     elif op == "sum":
@@ -159,7 +170,7 @@ def _compute_vjp(node: Tensor, g: Tensor) -> Tuple[Optional[Tensor], ...]:
         else:
             g_expanded = g
 
-        vjp_a = g_expanded * Tensor(np.ones(orig_shape)) if a.requires_grad else None
+        vjp_a = g_expanded * Tensor(np.ones(orig_shape, dtype=a.data.dtype)) if a.requires_grad else None
         return (vjp_a,)
 
     elif op == "mean":
@@ -178,7 +189,7 @@ def _compute_vjp(node: Tensor, g: Tensor) -> Tuple[Optional[Tensor], ...]:
         else:
             g_expanded = g
 
-        vjp_a = (g_expanded * (1.0 / n)) * Tensor(np.ones(orig_shape)) if a.requires_grad else None
+        vjp_a = (g_expanded * (1.0 / n)) * Tensor(np.ones(orig_shape, dtype=a.data.dtype)) if a.requires_grad else None
         return (vjp_a,)
 
     elif op == "reshape":
@@ -194,22 +205,44 @@ def _compute_vjp(node: Tensor, g: Tensor) -> Tuple[Optional[Tensor], ...]:
             return (g.transpose(*inv_axes) if a.requires_grad else None,)
         return (g.transpose() if a.requires_grad else None,)
 
+    elif op == "to":
+        (a,) = children
+        return (g.to(a.dtype) if a.requires_grad else None,)
+
     elif op == "getitem":
         (a,) = children
         idx = getattr(node, "_ctx", None)
-        grad_a = np.zeros(a.shape, dtype=np.float64)
+        grad_a = np.zeros(a.shape, dtype=a.data.dtype)
         if idx is not None:
             np.add.at(grad_a, idx, g.data)
-        vjp_a = Tensor(grad_a, requires_grad=True) if a.requires_grad else None
+        vjp_a = Tensor(
+            grad_a,
+            requires_grad=a.requires_grad,
+            _children=(g,) if g.requires_grad else (),
+            _op="scatter",
+            _ctx=(a.shape, idx),
+        ) if a.requires_grad else None
+        if vjp_a is not None and g.requires_grad:
+            target_vjp = vjp_a
+            def _backward() -> None:
+                if g.requires_grad:
+                    g.grad += target_vjp.grad[idx]
+            vjp_a._backward = _backward
         return (vjp_a,)
+
+    elif op == "scatter":
+        (g_orig,) = children
+        shape, idx = getattr(node, "_ctx", (None, None))
+        return (g[idx] if g_orig.requires_grad else None,)
 
     elif op == "stack":
         axis = getattr(node, "_ctx", 0)
+        norm_axis = axis if axis >= 0 else g.data.ndim + axis
         vjps: List[Optional[Tensor]] = []
         for i, child in enumerate(children):
             if child.requires_grad:
                 idx = [slice(None)] * g.data.ndim
-                idx[axis] = i
+                idx[norm_axis] = i
                 vjps.append(g[tuple(idx)])
             else:
                 vjps.append(None)
@@ -217,21 +250,117 @@ def _compute_vjp(node: Tensor, g: Tensor) -> Tuple[Optional[Tensor], ...]:
 
     elif op == "concat":
         axis = getattr(node, "_ctx", 0)
+        norm_axis = axis if axis >= 0 else g.data.ndim + axis
         vjps_c: List[Optional[Tensor]] = []
         offset = 0
         for child in children:
-            length = child.shape[axis]
+            length = child.shape[norm_axis]
             if child.requires_grad:
                 idx = [slice(None)] * g.data.ndim
-                idx[axis] = slice(offset, offset + length)
+                idx[norm_axis] = slice(offset, offset + length)
                 vjps_c.append(g[tuple(idx)])
             else:
                 vjps_c.append(None)
             offset += length
         return tuple(vjps_c)
 
-    # Fallback: default to None for unhandled operations
-    return tuple(None for _ in children)
+    elif op in ("fused_linear", "fused_linear_relu"):
+        x = children[0]
+        weight = children[1]
+        bias = children[2] if len(children) == 3 else None
+
+        if op == "fused_linear_relu":
+            z_data = getattr(node, "_ctx", None)
+            if z_data is not None:
+                mask = Tensor((z_data.reshape(node.shape) > 0.0).astype(g.data.dtype), dtype=g.data.dtype)
+            else:
+                mask = Tensor((node.data > 0.0).astype(g.data.dtype), dtype=g.data.dtype)
+            g_eff = g * mask
+        else:
+            g_eff = g
+
+        if x.data.ndim == 1 and weight.data.ndim == 2:
+            g_2d = g_eff.reshape(1, -1) if g_eff.data.ndim == 1 else g_eff
+            x_col = x.reshape(-1, 1)
+            vjp_x = (g_2d @ weight.transpose()).reshape(x.shape) if x.requires_grad else None
+            vjp_weight = (x_col @ g_2d) if weight.requires_grad else None
+        elif x.data.ndim > 2 and weight.data.ndim == 2:
+            g_2d = g_eff.reshape(-1, weight.shape[1])
+            x_2d = x.reshape(-1, x.shape[-1])
+            vjp_x = (g_2d @ weight.transpose()).reshape(x.shape) if x.requires_grad else None
+            vjp_weight = (x_2d.transpose() @ g_2d) if weight.requires_grad else None
+        else:
+            vjp_x = (g_eff @ weight.transpose()) if x.requires_grad else None
+            vjp_weight = (x.transpose() @ g_eff) if weight.requires_grad else None
+
+        vjps_f: List[Optional[Tensor]] = [vjp_x, vjp_weight]
+        if bias is not None:
+            vjp_bias = unbroadcast_tensor(g_eff, bias.shape) if bias.requires_grad else None
+            vjps_f.append(vjp_bias)
+        return tuple(vjps_f)
+
+    elif op == "abs":
+        (a,) = children
+        return (g * Tensor(np.sign(a.data).astype(a.data.dtype), dtype=a.data.dtype) if a.requires_grad else None,)
+
+    elif op == "clip":
+        (a,) = children
+        ctx = getattr(node, "_ctx", None)
+        min_val, max_val = ctx if ctx is not None else (-np.inf, np.inf)
+        mask_clip = Tensor(((a.data >= min_val) & (a.data <= max_val)).astype(a.data.dtype), dtype=a.data.dtype)
+        return (g * mask_clip if a.requires_grad else None,)
+
+    elif op == "softmax":
+        (a,) = children
+        axis = getattr(node, "_ctx", -1)
+        if axis is None:
+            axis = -1
+        p = node
+        vjp_a = p * (g - (p * g).sum(axis=axis, keepdims=True)) if a.requires_grad else None
+        return (vjp_a,)
+
+    elif op == "log_softmax":
+        (a,) = children
+        axis = getattr(node, "_ctx", -1)
+        if axis is None:
+            axis = -1
+        p = node.exp()
+        vjp_a = (g - p * g.sum(axis=axis, keepdims=True)) if a.requires_grad else None
+        return (vjp_a,)
+
+    elif op == "max":
+        (a,) = children
+        ctx = getattr(node, "_ctx", None)
+        axis, keepdims = ctx if ctx is not None else (None, False)
+        mask_max = (a.data == np.max(a.data, axis=axis, keepdims=True)).astype(a.data.dtype)
+        count = mask_max.sum(axis=axis, keepdims=True)
+        if axis is not None and not keepdims:
+            expanded_shape = list(a.shape)
+            expanded_shape[axis] = 1
+            g_expanded = g.reshape(*expanded_shape)
+        else:
+            g_expanded = g
+        vjp_a = g_expanded * Tensor(mask_max / count, dtype=a.data.dtype) if a.requires_grad else None
+        return (vjp_a,)
+
+    elif op == "leaky_relu":
+        (a,) = children
+        negative_slope = getattr(node, "_ctx", 0.01)
+        if negative_slope is None:
+            negative_slope = 0.01
+        mask_lr = (a.data > 0).astype(a.data.dtype) + float(negative_slope) * (a.data <= 0).astype(a.data.dtype)
+        return (g * Tensor(mask_lr, dtype=a.data.dtype) if a.requires_grad else None,)
+
+    elif op == "elu":
+        (a,) = children
+        alpha = getattr(node, "_ctx", 1.0)
+        if alpha is None:
+            alpha = 1.0
+        deriv_elu = np.where(a.data > 0, 1.0, float(alpha) * np.exp(a.data)).astype(a.data.dtype)
+        return (g * Tensor(deriv_elu, dtype=a.data.dtype) if a.requires_grad else None,)
+
+    # Explicit error for unregistered operations
+    raise NotImplementedError(f"No VJP registered for operation '{op}'")
 
 
 # ── Functional Autograd API ──────────────────────────────────────────
@@ -338,7 +467,9 @@ def grad(
                     "One of the differentiated Tensors appears to not have been used in the graph. "
                     "Set allow_unused=True if this is the desired behavior."
                 )
-            res = Tensor(np.zeros_like(inp.data), requires_grad=create_graph)
+            res = Tensor(np.zeros_like(inp.data), dtype=inp.data.dtype, requires_grad=create_graph)
+        elif res.dtype != inp.dtype:
+            res = res.to(inp.dtype)
         result.append(res)
 
     if not retain_graph and not create_graph:
@@ -378,17 +509,34 @@ def hessian(
         k_size = inp_k.data.size
         for local_i in range(k_size):
             # Basis vector matching shape of inp_k
-            basis = np.zeros(inp_k.data.shape, dtype=np.float64)
+            basis = np.zeros(inp_k.data.shape, dtype=inp_k.data.dtype)
             basis.flat[local_i] = 1.0
-            basis_t = Tensor(basis, requires_grad=False)
+            basis_t = Tensor(basis, dtype=inp_k.data.dtype, requires_grad=False)
 
             # Project first gradient: scalar g_proj = (g_k * basis_t).sum()
             g_proj = (g_k * basis_t).sum()
 
             # Backprop to get the row across all inputs
-            row_grads = grad(g_proj, inputs_list, retain_graph=True, create_graph=create_graph)
-            flat_row = np.concatenate([rg.data.flatten() for rg in row_grads])
-            rows.append(Tensor(flat_row, requires_grad=create_graph))
+            row_grads = grad(
+                g_proj,
+                inputs_list,
+                retain_graph=True,
+                create_graph=create_graph,
+                allow_unused=True,
+            )
+            if create_graph:
+                flat_parts = [rg.reshape(-1) for rg in row_grads]
+                if len(flat_parts) == 1:
+                    flat_row = flat_parts[0]
+                else:
+                    flat_row = concat(flat_parts, axis=0)
+                rows.append(flat_row)
+            else:
+                flat_row_data = np.concatenate([rg.data.flatten() for rg in row_grads])
+                rows.append(Tensor(flat_row_data, dtype=flat_row_data.dtype, requires_grad=False))
 
-    hessian_matrix = np.stack([r.data for r in rows])
-    return Tensor(hessian_matrix, requires_grad=create_graph)
+    if create_graph:
+        return stack(rows, axis=0)
+    else:
+        hessian_matrix = np.stack([r.data for r in rows], axis=0)
+        return Tensor(hessian_matrix, dtype=hessian_matrix.dtype, requires_grad=False)

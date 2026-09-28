@@ -97,7 +97,7 @@ def softmax(x: Tensor, axis: int = -1) -> Tensor:
     shifted = x.data - np.max(x.data, axis=axis, keepdims=True)
     exp_x = np.exp(shifted)
     probs = exp_x / np.sum(exp_x, axis=axis, keepdims=True)
-    out = Tensor(probs, requires_grad=x.requires_grad, _children=(x,), _op="softmax")
+    out = Tensor(probs, dtype=x.dtype, requires_grad=x.requires_grad, _children=(x,), _op="softmax", _ctx=axis)
 
     def _backward() -> None:
         if x.requires_grad:
@@ -116,7 +116,7 @@ def log_softmax(x: Tensor, axis: int = -1) -> Tensor:
     shifted = x.data - np.max(x.data, axis=axis, keepdims=True)
     log_sum_exp = np.log(np.sum(np.exp(shifted), axis=axis, keepdims=True))
     log_probs = shifted - log_sum_exp
-    out = Tensor(log_probs, requires_grad=x.requires_grad, _children=(x,), _op="log_softmax")
+    out = Tensor(log_probs, dtype=x.dtype, requires_grad=x.requires_grad, _children=(x,), _op="log_softmax", _ctx=axis)
 
     def _backward() -> None:
         if x.requires_grad:
@@ -130,7 +130,7 @@ def log_softmax(x: Tensor, axis: int = -1) -> Tensor:
 def max(x: Tensor, axis: Optional[int] = None, keepdims: bool = False) -> Tensor:
     """Max operation with gradient routing to the maximum positions."""
     out_data = np.max(x.data, axis=axis, keepdims=keepdims)
-    out = Tensor(out_data, requires_grad=x.requires_grad, _children=(x,), _op="max")
+    out = Tensor(out_data, dtype=x.dtype, requires_grad=x.requires_grad, _children=(x,), _op="max", _ctx=(axis, keepdims))
 
     def _backward() -> None:
         if x.requires_grad:
@@ -155,12 +155,12 @@ def min(x: Tensor, axis: Optional[int] = None, keepdims: bool = False) -> Tensor
 def clip(x: Tensor, min_val: float, max_val: float) -> Tensor:
     """Clip values to [min_val, max_val]."""
     out_data = np.clip(x.data, min_val, max_val)
-    out = Tensor(out_data, requires_grad=x.requires_grad, _children=(x,), _op="clip")
+    out = Tensor(out_data, dtype=x.dtype, requires_grad=x.requires_grad, _children=(x,), _op="clip", _ctx=(min_val, max_val))
 
     def _backward() -> None:
         if x.requires_grad:
             mask = (x.data >= min_val) & (x.data <= max_val)
-            x.grad += mask.astype(np.float64) * out.grad
+            x.grad += mask.astype(x.data.dtype) * out.grad
 
     out._backward = _backward
     return out
@@ -176,7 +176,7 @@ def square(x: Tensor) -> Tensor:
 
 def abs(x: Tensor) -> Tensor:
     out_data = np.abs(x.data)
-    out = Tensor(out_data, requires_grad=x.requires_grad, _children=(x,), _op="abs")
+    out = Tensor(out_data, dtype=x.dtype, requires_grad=x.requires_grad, _children=(x,), _op="abs")
 
     def _backward() -> None:
         if x.requires_grad:

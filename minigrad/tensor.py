@@ -57,8 +57,8 @@ class Tensor:
     ) -> None:
         from minigrad.graph import is_grad_enabled
 
-        if isinstance(data, np.ndarray):
-            self.data: np.ndarray = data if dtype is None else data.astype(dtype)
+        if isinstance(data, (np.ndarray, np.generic)):
+            self.data: np.ndarray = np.asarray(data) if dtype is None else np.asarray(data, dtype=dtype)
         elif dtype is not None:
             self.data = np.array(data, dtype=dtype)
         else:
@@ -529,6 +529,7 @@ class Tensor:
         axes = None if axis is None else Tensor._normalize_axes(axis, self.data.ndim)
         out = Tensor(
             self.data.sum(axis=axes, keepdims=keepdims),
+            dtype=self.dtype,
             requires_grad=self.requires_grad,
             _children=(self,),
             _op="sum",
@@ -556,6 +557,7 @@ class Tensor:
 
         out = Tensor(
             self.data.mean(axis=axes, keepdims=keepdims),
+            dtype=self.dtype,
             requires_grad=self.requires_grad,
             _children=(self,),
             _op="mean",

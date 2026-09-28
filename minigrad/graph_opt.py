@@ -8,7 +8,10 @@ symbolic optimizations directly on the explicit computational DAG:
 2. Constant Folding: Pre-evaluates subgraphs where all inputs are non-trainable constants.
 3. Dead-Branch Pruning: Eliminates unused intermediate computations.
 4. Kernel Fusion: Fuses MatMul + Bias -> fused_linear and MatMul + Bias + ReLU -> fused_linear_relu.
-5. Strict Autograd Preservation: Guarantees exact bit-for-bit gradient equivalence on all leaf parameters.
+5. Strict Autograd Preservation: Guarantees numerical gradient parity within documented tolerance on all leaf parameters.
+
+Optimizer Domain Contract:
+Contract A: Algebraic transformations assume finite real values within the supported numerical domain.
 """
 from __future__ import annotations
 
@@ -20,6 +23,8 @@ import numpy as np
 from minigrad.contracts import check_dynamic_parity, check_numerical_parity
 from minigrad.graph import topological_sort
 from minigrad.tensor import Tensor
+
+OPTIMIZER_DOMAIN_CONTRACT = "Contract A: Algebraic transformations assume finite real values within the supported numerical domain."
 
 # ── Fused Operators with Exact Autograd Backward Closures ───────────
 
@@ -70,6 +75,7 @@ def fused_linear_relu(x: Tensor, weight: Tensor, bias: Optional[Tensor] = None) 
     out_data = np.maximum(0.0, z_data)
     if x.data.ndim > 2:
         out_data = out_data.reshape(*x.data.shape[:-1], weight.data.shape[1])
+        z_data = z_data.reshape(*x.data.shape[:-1], weight.data.shape[1])
 
     requires_grad = x.requires_grad or weight.requires_grad or (bias is not None and bias.requires_grad)
     children = (x, weight) if bias is None else (x, weight, bias)
@@ -82,7 +88,8 @@ def fused_linear_relu(x: Tensor, weight: Tensor, bias: Optional[Tensor] = None) 
 
         # Exact ReLU derivative: dz = grad * (z > 0)
         mask = (z_data > 0.0)
-        dz = grad_2d * mask
+        mask_2d = mask.reshape(-1, weight.data.shape[1]) if mask.ndim > 2 else mask
+        dz = grad_2d * mask_2d
 
         if x.requires_grad:
             dx = dz @ weight.data.T

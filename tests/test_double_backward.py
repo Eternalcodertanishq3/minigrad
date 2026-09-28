@@ -9,8 +9,13 @@ Tests:
 - Physics-Informed Neural Network (PINN) PDE residual backpropagation
 """
 import numpy as np
+import pytest
 
 from minigrad.autograd import grad, hessian
+from minigrad.graph_opt import fused_linear, fused_linear_relu
+from minigrad.nn import ELU, LeakyReLU
+from minigrad.ops import clip, log_softmax, softmax
+from minigrad.ops import max as tmax
 from minigrad.tensor import Tensor
 
 
@@ -158,3 +163,170 @@ def test_pinn_loss_backpropagation():
     assert grad_W2 is not None and grad_W2.shape == W2.shape
     assert not np.all(grad_W1.data == 0), "W1 must receive non-zero PDE residual gradients"
     assert not np.all(grad_W2.data == 0), "W2 must receive non-zero PDE residual gradients"
+
+
+def test_hessian_differentiable_third_derivative():
+    """
+    Verify that hessian(y, x, create_graph=True) builds a genuinely differentiable computation graph.
+    y = x^3
+    H = d²y/dx² = 6x
+    d(H.sum())/dx = 6
+    """
+    x = Tensor([2.0], requires_grad=True)
+    y = (x ** 3).sum()
+    H = hessian(y, x, create_graph=True)
+    assert H.requires_grad
+    assert np.isclose(H.data[0, 0], 12.0)
+
+    (third_deriv,) = grad(H.sum(), x)
+    assert np.isclose(third_deriv.data[0], 6.0)
+
+    # Multi-element case
+    x2 = Tensor([2.0, 3.0], requires_grad=True)
+    y2 = (x2 ** 3).sum()
+    H2 = hessian(y2, x2, create_graph=True)
+    assert H2.shape == (2, 2)
+    assert np.isclose(H2.data[0, 0], 12.0)
+    assert np.isclose(H2.data[1, 1], 18.0)
+    assert np.isclose(H2.data[0, 1], 0.0)
+
+    (third_deriv2,) = grad(H2.sum(), x2)
+    assert np.allclose(third_deriv2.data, [6.0, 6.0])
+
+
+def test_to_and_fused_linear_vjp():
+    """Verify vjp for to, fused_linear, fused_linear_relu, and unregistered op error."""
+    # 1. to() vjp casts grad back to input dtype
+    x = Tensor([1.0, 2.0], dtype=np.float32, requires_grad=True)
+    y = x.to(np.float64) * 2.0
+    (gx,) = grad(y.sum(), x, create_graph=True)
+    assert gx.dtype == np.float32
+    assert np.allclose(gx.data, [2.0, 2.0])
+
+    # 2. fused_linear vjp
+    w = Tensor([[2.0, 3.0], [4.0, 5.0]], requires_grad=True)
+    b = Tensor([0.5, 1.5], requires_grad=True)
+    x_in = Tensor([[1.0, 2.0]], requires_grad=True)
+    out_lin = fused_linear(x_in, w, b)
+    (gx_lin, gw_lin, gb_lin) = grad(out_lin.sum(), [x_in, w, b], create_graph=True)
+    assert np.allclose(gx_lin.data, [[5.0, 9.0]])
+    assert np.allclose(gb_lin.data, [1.0, 1.0])
+
+    # 3. fused_linear_relu vjp
+    out_relu = fused_linear_relu(x_in, w, b)
+    (gx_r, gw_r, gb_r) = grad(out_relu.sum(), [x_in, w, b], create_graph=True)
+    assert np.allclose(gx_r.data, [[5.0, 9.0]])
+
+    # 4. Unknown op raises NotImplementedError
+    dummy_in = Tensor([1.0], requires_grad=True)
+    dummy_out = Tensor([2.0], requires_grad=True, _children=(dummy_in,), _op="unregistered_custom_op")
+    with pytest.raises(NotImplementedError, match="No VJP registered for operation 'unregistered_custom_op'"):
+        _ = grad(dummy_out, dummy_in)
+
+
+def test_hessian_multi_input_heterogeneous_shapes():
+    """Verify that hessian with multiple inputs of heterogeneous shapes supports create_graph and 3rd derivatives."""
+    x1 = Tensor([2.0, 3.0], requires_grad=True)
+    x2 = Tensor([[1.0, 2.0], [3.0, 4.0]], requires_grad=True)
+    # y = (x1^3).sum() + (x2^3).sum()
+    y = (x1 ** 3).sum() + (x2 ** 3).sum()
+
+    H = hessian(y, [x1, x2], create_graph=True)
+    assert H.shape == (6, 6)
+    assert H.requires_grad
+
+    # Analytical 2nd derivatives on diagonal:
+    # d²y/dx1_0² = 6 * 2 = 12
+    # d²y/dx1_1² = 6 * 3 = 18
+    # d²y/dx2_00² = 6 * 1 = 6
+    # d²y/dx2_01² = 6 * 2 = 12
+    # d²y/dx2_10² = 6 * 3 = 18
+    # d²y/dx2_11² = 6 * 4 = 24
+    expected_diag = [12.0, 18.0, 6.0, 12.0, 18.0, 24.0]
+    assert np.allclose(np.diag(H.data), expected_diag)
+
+    # Off-diagonals must be 0
+    np.fill_diagonal(H.data, 0.0)
+    assert np.allclose(H.data, 0.0)
+
+    # 3rd derivatives: d(H.sum())/dx = 6 for each element
+    g3_1, g3_2 = grad(H.sum(), [x1, x2])
+    assert np.allclose(g3_1.data, [6.0, 6.0])
+    assert np.allclose(g3_2.data, [[6.0, 6.0], [6.0, 6.0]])
+
+
+def test_fused_linear_relu_3d_vjp_and_double_backward():
+    """Verify 3D activations in fused_linear_relu work for VJP and double backward."""
+    x = Tensor(np.random.randn(2, 5, 3), requires_grad=True)
+    w = Tensor(np.random.randn(3, 4), requires_grad=True)
+    b = Tensor(np.random.randn(4), requires_grad=True)
+
+    out = fused_linear_relu(x, w, b)
+    assert out.shape == (2, 5, 4)
+
+    # First derivative w.r.t [x, w, b]
+    gx, gw, gb = grad(out.sum(), [x, w, b], create_graph=True)
+    assert gx.shape == (2, 5, 3)
+    assert gw.shape == (3, 4)
+    assert gb.shape == (4,)
+
+    # Double backward: differentiate gradient sum w.r.t inputs
+    g2_x, g2_w, g2_b = grad(gx.sum(), [x, w, b], allow_unused=True)
+    assert g2_w.shape == (3, 4)
+
+
+def test_vjp_extended_ops():
+    """Verify VJPs for clip, softmax, log_softmax, max, leaky_relu, and elu."""
+    # 1. clip VJP
+    x_clip = Tensor([0.5, 5.0, -5.0], requires_grad=True)
+    c = clip(x_clip, -1.0, 1.0)
+    (g_clip,) = grad(c.sum(), x_clip, create_graph=True)
+    assert np.allclose(g_clip.data, [1.0, 0.0, 0.0])
+
+    # 2. softmax VJP
+    x_sm = Tensor([1.0, 2.0, 3.0], requires_grad=True)
+    s = softmax(x_sm)
+    (g_sm,) = grad(s.sum(), x_sm, create_graph=True)
+    assert np.allclose(g_sm.data, [0.0, 0.0, 0.0], atol=1e-7)
+
+    # 3. log_softmax VJP
+    ls = log_softmax(x_sm)
+    (g_ls,) = grad((ls ** 2).sum(), x_sm, create_graph=True)
+    assert g_ls.shape == (3,)
+
+    # 4. max VJP
+    x_max = Tensor([[1.0, 5.0], [3.0, 2.0]], requires_grad=True)
+    m = tmax(x_max, axis=1)
+    (g_max,) = grad(m.sum(), x_max, create_graph=True)
+    assert np.allclose(g_max.data, [[0.0, 1.0], [1.0, 0.0]])
+
+    # 5. LeakyReLU VJP
+    lrelu = LeakyReLU(negative_slope=0.1)
+    x_lr = Tensor([-2.0, 3.0], requires_grad=True)
+    (g_lr,) = grad(lrelu(x_lr).sum(), x_lr, create_graph=True)
+    assert np.allclose(g_lr.data, [0.1, 1.0])
+
+    # 6. ELU VJP
+    elu = ELU(alpha=1.0)
+    x_elu = Tensor([0.0, 2.0], requires_grad=True)
+    (g_elu,) = grad(elu(x_elu).sum(), x_elu, create_graph=True)
+    assert np.allclose(g_elu.data, [1.0, 1.0])
+
+
+def test_dtype_preservation_autograd():
+    """Verify that float32 inputs maintain float32 dtypes through autograd and hessian."""
+    x = Tensor([2.0, 3.0], dtype=np.float32, requires_grad=True)
+    assert x.sum().dtype == np.float32
+    assert x.mean().dtype == np.float32
+
+    y = (x ** 3).sum()
+    (g,) = grad(y, x, create_graph=True)
+    assert g.dtype == np.float32
+
+    H = hessian(y, x, create_graph=True)
+    assert H.dtype == np.float32
+
+    (third_deriv,) = grad(H.sum(), x)
+    assert third_deriv.dtype == np.float32
+
+

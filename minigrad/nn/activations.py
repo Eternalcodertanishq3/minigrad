@@ -108,7 +108,7 @@ class LeakyReLU(Module):
         # x * (x > 0) + alpha * x * (x <= 0) = x * ((x > 0) + alpha * (x <= 0))
         mask = (x.data > 0).astype(x.data.dtype) + self.negative_slope * (x.data <= 0).astype(x.data.dtype)
         out_data = x.data * mask
-        out = Tensor(out_data, requires_grad=x.requires_grad, _children=(x,), _op="leaky_relu")
+        out = Tensor(out_data, dtype=x.dtype, requires_grad=x.requires_grad, _children=(x,), _op="leaky_relu", _ctx=self.negative_slope)
 
         def _backward() -> None:
             if x.requires_grad:
@@ -136,7 +136,7 @@ class ELU(Module):
     def forward(self, x: Tensor) -> Tensor:
         import numpy as np
         out_data = np.where(x.data > 0, x.data, self.alpha * (np.exp(x.data) - 1))
-        out = Tensor(out_data, requires_grad=x.requires_grad, _children=(x,), _op="elu")
+        out = Tensor(out_data, dtype=x.dtype, requires_grad=x.requires_grad, _children=(x,), _op="elu", _ctx=self.alpha)
 
         def _backward() -> None:
             if x.requires_grad:

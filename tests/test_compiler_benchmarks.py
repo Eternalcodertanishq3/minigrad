@@ -15,6 +15,7 @@ Validates:
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -104,7 +105,7 @@ def test_three_way_differential_validation(tmp_path: Path):
 # ── 2. Static Memory Arena Reuse Assertion ────────────────────────────
 
 def test_static_memory_arena_interval_reuse():
-    """Verify that interval coloring reduces activation RAM footprint by >= 40% on deep nets."""
+    """Verify that interval coloring reduces activation RAM footprint by >= 35% on deep nets."""
     model = Sequential([
         Linear(32, 64),
         ReLU(),
@@ -162,20 +163,115 @@ def test_systems_benchmarks_five_topologies(tmp_path: Path):
         t1 = time.perf_counter()
         py_latency_us = (t1 - t0) / 100.0 * 1e6
 
-        # Compile to C with arena memory
+        # Compile to C with arena memory without default main
         c_file = tmp_path / f"{name}.c"
         exe_file = tmp_path / (f"{name}.exe" if os.name == "nt" else name)
-        export_c(model, x, filename=c_file, include_main=True, model_name=name.lower(), arena_memory=True)
+        export_c(model, x, filename=c_file, include_main=False, model_name=name.lower(), arena_memory=True)
 
-        c_out = _compile_and_run(c_file, exe_file)
-        assert len(c_out) > 0
+        in_size = x.data.size
+        out_size = model(x).data.size
+        fn_name = f"{name.lower()}_forward"
 
-        # Benchmark compiled C execution latency (10 runs)
-        t0_c = time.perf_counter()
-        for _ in range(10):
-            subprocess.run([str(exe_file)], capture_output=True, text=True, check=False)
-        t1_c = time.perf_counter()
-        c_latency_us = (t1_c - t0_c) / 10.0 * 1e6
+        # Append in-process benchmark harness (runs warm-up and 1,000+ internal iterations)
+        bench_harness = f"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+
+#if defined(_WIN32) || defined(__CYGWIN__)
+#include <windows.h>
+static double get_time_us(void) {{
+    static LARGE_INTEGER freq;
+    static int initialized = 0;
+    if (!initialized) {{
+        QueryPerformanceFrequency(&freq);
+        initialized = 1;
+    }}
+    LARGE_INTEGER counter;
+    QueryPerformanceCounter(&counter);
+    return ((double)counter.QuadPart * 1e6) / (double)freq.QuadPart;
+}}
+#else
+#include <time.h>
+static double get_time_us(void) {{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec * 1e6 + (double)ts.tv_nsec / 1e3;
+}}
+#endif
+
+static int compare_doubles(const void* a, const void* b) {{
+    double da = *(const double*)a;
+    double db = *(const double*)b;
+    if (da < db) return -1;
+    if (da > db) return 1;
+    return 0;
+}}
+
+int main(int argc, char** argv) {{
+    static float in_buf[{in_size}];
+    static float out_buf[{out_size}];
+    for (int i = 0; i < {in_size}; i++) {{
+        in_buf[i] = 1.0f;
+    }}
+
+    /* Warm-up: 50 iterations within single process */
+    for (int i = 0; i < 50; i++) {{
+        {fn_name}(in_buf, out_buf);
+    }}
+
+    const int iterations = 1000;
+    double* times = (double*)malloc(iterations * sizeof(double));
+    if (!times) return 1;
+
+    double sum = 0.0;
+    for (int i = 0; i < iterations; i++) {{
+        double t0 = get_time_us();
+        {fn_name}(in_buf, out_buf);
+        double t1 = get_time_us();
+        double dt = t1 - t0;
+        times[i] = dt;
+        sum += dt;
+    }}
+
+    qsort(times, iterations, sizeof(double), compare_doubles);
+    double median_us = times[iterations / 2];
+    double p95_us = times[(int)(iterations * 0.95)];
+    double mean_us = sum / iterations;
+
+    double var = 0.0;
+    for (int i = 0; i < iterations; i++) {{
+        double diff = times[i] - mean_us;
+        var += diff * diff;
+    }}
+    double std_us = sqrt(var / iterations);
+
+    double py_latency_us = (argc > 1) ? atof(argv[1]) : 0.0;
+    double speedup = (py_latency_us > 0.0 && median_us > 0.0) ? (py_latency_us / median_us) : 1.0;
+
+    printf("{{\\\"median_us\\\": %.4f, \\\"p95_us\\\": %.4f, \\\"std_us\\\": %.4f, \\\"speedup\\\": %.4f, \\\"iterations\\\": %d}}\\n",
+           median_us, p95_us, std_us, speedup, iterations);
+
+    free(times);
+    return 0;
+}}
+"""
+        with open(c_file, "a", encoding="utf-8") as f:
+            f.write(bench_harness)
+
+        # Compile C benchmark executable
+        assert COMPILER is not None
+        cmd = [COMPILER, "-O3", str(c_file), "-o", str(exe_file)]
+        if os.name != "nt":
+            cmd.append("-lm")
+        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        assert res.returncode == 0, f"Compilation failed: {res.stderr}"
+
+        # Execute single in-process benchmark run
+        run_res = subprocess.run([str(exe_file), f"{py_latency_us:.4f}"], capture_output=True, text=True, check=False)
+        assert run_res.returncode == 0, f"Benchmark execution failed: {run_res.stderr}"
+
+        bench_json = json.loads(run_res.stdout.strip())
 
         compiler = CCompiler(model, x, arena_memory=True)
         compiler.compile()
@@ -183,9 +279,13 @@ def test_systems_benchmarks_five_topologies(tmp_path: Path):
 
         benchmarks[name] = {
             "py_latency_us": py_latency_us,
-            "c_latency_us": c_latency_us,
+            "c_latency_us": bench_json["median_us"],
+            "median_us": bench_json["median_us"],
+            "p95_us": bench_json["p95_us"],
+            "std_us": bench_json["std_us"],
+            "speedup": bench_json["speedup"],
             "arena_bytes": arena_bytes,
-            "speedup": py_latency_us / c_latency_us if c_latency_us > 0 else 1.0,
+            "iterations": bench_json["iterations"],
         }
 
     # All 5 topologies compiled, ran natively, and generated verified benchmarks
@@ -193,4 +293,9 @@ def test_systems_benchmarks_five_topologies(tmp_path: Path):
     for name, data in benchmarks.items():
         assert data["py_latency_us"] > 0.0
         assert data["c_latency_us"] > 0.0
+        assert data["median_us"] > 0.0
+        assert data["p95_us"] >= data["median_us"]
+        assert data["std_us"] >= 0.0
+        assert data["speedup"] > 0.0
         assert data["arena_bytes"] > 0
+        assert data["iterations"] >= 1000

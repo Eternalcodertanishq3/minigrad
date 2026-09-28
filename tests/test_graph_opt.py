@@ -7,7 +7,7 @@ Tests:
 3. Constant folding for non-trainable subgraphs.
 4. Operator fusion: MatMul + Bias -> fused_linear, and + ReLU -> fused_linear_relu.
 5. Multi-consumer fusion guard: activations with >1 consumers are not fused.
-6. Bit-for-bit autograd gradient equivalence (exact numerical parity with unoptimized graph).
+6. Numerical gradient parity within documented tolerance (exact numerical parity with unoptimized graph).
 7. Integration with Tensor.optimize() and Module.optimize().
 8. Integration with C compiler: export_c(..., optimize=True).
 """
@@ -190,7 +190,7 @@ def test_multi_consumer_fusion_guard():
 
 
 # ==============================================================================
-# 5. Exact Autograd Gradient Parity (100% Bit-Level Parity)
+# 5. Exact Autograd Gradient Parity (Numerical gradient parity within documented tolerance)
 # ==============================================================================
 
 def test_autograd_gradient_parity_exact():

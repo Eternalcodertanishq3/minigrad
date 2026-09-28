@@ -67,13 +67,17 @@ def main():
             c = a @ b
             c.backward()
 
-        def numpy_only():
+        def setup_numpy():
             a = np.random.randn(m, k)
             b = np.random.randn(k, n)
+            return a, b
+
+        def numpy_matmul(a, b):
             c = a @ b
+            return c
 
         t_mg, std_mg = benchmark(f"matmul_{m}x{n}", matmul_grad, setup)
-        t_np, std_np = benchmark(f"numpy_{m}x{n}", numpy_only)
+        t_np, std_np = benchmark(f"numpy_{m}x{n}", numpy_matmul, setup_numpy)
 
         overhead = t_mg / t_np if t_np > 0 else float('inf')
         print(f"{f'({m},{n})':>12} {t_mg:>14.2f} {t_np:>14.2f} {overhead:>11.2f}x")

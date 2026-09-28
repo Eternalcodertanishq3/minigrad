@@ -5,7 +5,7 @@ This example showcases miniGrad's built-in mathematical graph optimizer:
 1. Algebraic Identity Elimination: pruning redundant math operations (x + 0, x * 1, etc.).
 2. Constant Folding: pre-evaluating non-trainable subgraphs at compile time.
 3. Kernel Fusion: fusing MatMul + Bias + ReLU into a single-pass fused_linear_relu kernel.
-4. Exact Bit-for-Bit Autograd Equivalence: mathematically verifying 100% gradient parity.
+4. Numerical gradient parity within documented tolerance: mathematically verifying gradient parity.
 5. Synergy with Embedded C Compiler: emitting fused static C kernels with zero heap allocations.
 """
 from __future__ import annotations
@@ -133,7 +133,7 @@ def main():
     print(f"  * Max Input    Gradient Difference: {dx_diff:.2e}")
 
     assert max(dw1_diff, db1_diff, dw2_diff, db2_diff, dx_diff) < 1e-12
-    print("  => VERIFICATION PASSED: 100% Bit-for-Bit Gradient Equivalence Guaranteed!")
+    print("  => VERIFICATION PASSED: Numerical gradient parity within documented tolerance guaranteed!")
 
     # --------------------------------------------------------------------------
     # Part 4: Synergy with Zero-Runtime C Compiler

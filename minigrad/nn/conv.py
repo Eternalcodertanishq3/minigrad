@@ -77,7 +77,7 @@ def col2im(cols: np.ndarray, x_shape: Tuple[int, ...], kernel_h: int, kernel_w: 
 
     H_padded = H + 2 * padding
     W_padded = W + 2 * padding
-    dx_padded = np.zeros((N, C, H_padded, W_padded), dtype=np.float64)
+    dx_padded = np.zeros((N, C, H_padded, W_padded), dtype=cols.dtype)
 
     # Build vectorized index arrays for all kernel positions at once
     # ky_idx, kx_idx: kernel offsets (kH, kW)

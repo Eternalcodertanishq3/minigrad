@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/Eternalcodertanishq3/minigrad/actions/workflows/ci.yml/badge.svg)](https://github.com/Eternalcodertanishq3/minigrad/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/minigrad-framework.svg?color=blue)](https://pypi.org/project/minigrad-framework/)
-[![Tests](https://img.shields.io/badge/tests-319%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-319%20collected%20%7C%20281%20zero--dep-brightgreen.svg)](tests/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-pure%20numpy-red.svg)](pyproject.toml)
@@ -84,7 +84,7 @@ miniGrad maintains explicit maturity boundaries between verified production-grad
 | Capability / Metric | `miniGrad` | `PyTorch` | `micrograd` / `tinygrad` |
 | :--- | :---: | :---: | :---: |
 | **Dependencies** | **Zero (Pure NumPy)** | ~2.5 GB C++/CUDA binaries | Pure Python / minimal C |
-| **Full Test Suite Speed** | **319 tests in ~28s** | Minutes / Hours | Few dozen tests |
+| **Full Test Suite Speed** | **319 tests collected (281 zero-dep CI + 38 parity) in ~25s** | Minutes / Hours | Few dozen tests |
 | **Glass-Box Root-Cause NaN Debugger** | **Native Built-in** | `detect_anomaly` (slow) | ❌ None |
 | **Zero-Runtime C Code Generator** | **Native (`export_c`)** | TorchScript / ExecuTorch | TinyGrad has C-gen |
 | **Symbolic Graph Optimization & Fusion** | **Native Built-in** | TorchDynamo / Inductor | TinyGrad has fusion |
@@ -155,7 +155,7 @@ optimizer.step()
 
 Instead of stacking discrete layers ($L_1 \to L_2 \to L_3$), S.U.T.R.A. models hidden state evolution as a continuous differential equation:
 $$\frac{dz}{dt} = f_\theta(z(t), t)$$
-By solving the continuous adjoint state $a(t) = \frac{\partial \mathcal{L}}{\partial z(t)}$ in reverse time, backpropagation consumes strictly **$\mathcal{O}(1)$ constant memory** regardless of integration depth.
+By solving the continuous adjoint state $a(t) = \frac{\partial \mathcal{L}}{\partial z(t)}$ in reverse time, the Pontryagin Adjoint formulation maintains an $\mathcal{O}(1)$ computation graph node count invariant with respect to ODE integration steps (eliminating the $\mathcal{O}(N_{\text{steps}})$ autograd graph node explosion of discrete unrolling).
 
 ```python
 from minigrad import SUTRA, NeuralODE, Tensor
@@ -184,7 +184,7 @@ Standard deep networks cache every intermediate activation in RAM, causing an $\
 $$y_1 = x_1 + f(x_2), \quad y_2 = x_2 + g(y_1)$$
 Which are analytically invertible to **machine precision ($2.77 \times 10^{-16}$ error)**:
 $$x_2 = y_2 - g(y_1), \quad x_1 = y_1 - f(x_2)$$
-Forward passes discard intermediate activations; the backward pass dynamically reconstructs inputs on the fly, enabling **500-layer networks to train with strictly $\mathcal{O}(1)$ activation memory ($99.8\%$ RAM saved)**.
+Reversible coupling eliminates intermediate forward activation nodes in the autograd DAG. Forward passes discard intermediate activations; the backward pass dynamically reconstructs inputs on the fly, maintaining an $\mathcal{O}(1)$ activation node graph invariant regardless of network depth and enabling deep reversible networks to train with minimal activation memory footprint.
 
 ```python
 from minigrad import AVYAYA, ReversibleBlock, ReversibleSequential, Tensor
@@ -210,9 +210,9 @@ loss.backward()  # Dynamic backward reconstruction: O(1) memory!
 *Sanskrit: प्रमाण (Valid Means of Genuine Knowledge)*  
 **Probabilistic Representation of Analytical Moments & Algebraic Noise-aware Autograd.**
 
-Standard neural networks output uncalibrated point estimates and confidently hallucinate on out-of-distribution inputs. P.R.A.M.A.N.A. introduces a dual-stream computational graph tracking both expectation $\mathbb{E}[X] = \mu$ and variance $\mathrm{Var}[X] = \sigma^2$ through closed-form Goodman product algebra and first-order Taylor moment propagation:
+Standard neural networks output uncalibrated point estimates and confidently hallucinate on out-of-distribution inputs. P.R.A.M.A.N.A. introduces a dual-stream computational graph tracking both expectation $\mathbb{E}[X] = \mu$ and variance $\mathrm{Var}[X] = \sigma^2$ through closed-form Goodman product algebra for bilinear terms and Taylor-series analytical approximations through non-linearities:
 $$\sigma_{XY}^2 = \mu_X^2 \sigma_Y^2 + \mu_Y^2 \sigma_X^2 + \sigma_X^2 \sigma_Y^2$$
-Matches 100,000-sample empirical Monte Carlo simulations with $< 0.05\%$ discrepancy while running **$188.6\times$ faster** in a single pass. Automatically detects out-of-distribution hallucinations via a **$1122\times$ variance spike**.
+Moment propagation uses analytical Taylor approximations through non-linearities, validated against empirical Monte Carlo estimates ($< 0.05\%$ discrepancy on benchmark distributions) while executing in a single analytical forward pass. Automatically detects out-of-distribution inputs via epistemic variance spikes.
 
 ```python
 from minigrad import PRAMANA, DistributionalTensor, DistributionalLinear, GaussianNLLLoss
@@ -266,9 +266,9 @@ loss.backward()  # Trains relation to reach 100% transitivity satisfaction!
 **Spike-Propagation Asynchronous Network Dynamics & Autograd.**
 
 Deep networks waste hundreds of Watts computing dense matrix multiplications on every clock cycle. S.P.A.N.D.A. implements biological Leaky Integrate-and-Fire (LIF) dynamics where neurons communicate via sparse binary pulses ($S \in \{0, 1\}$). Overcomes the non-differentiable Heaviside step barrier ($\delta(x) = 0$) using **Surrogate-Gradient Autograd** (Fast Sigmoid, ArcTan, Gaussian):
-* Achieved **$96.50\%$ temporal event sparsity** (quiescent neurons).
-* Executed **$28.57\times$ fewer operations** by replacing dense MACs with sparse additions.
-* Delivered **$146.03\times$ hardware energy reduction** over standard ANNs.
+* **Model-estimated temporal event sparsity:** $96.50\%$ quiescent activations on benchmark tasks.
+* **Model-estimated SynOps reduction:** $28.57\times$ fewer operations by modeling sparse synaptic events rather than dense MACs.
+* **Model-estimated energy telemetry:** $146.03\times$ hardware energy reduction calculated under the standard simulated neuromorphic energy model ($E_{\text{MAC}} \approx 4.6\text{ pJ}$ vs $E_{\text{AC}} \approx 0.9\text{ pJ}$ at 45nm CMOS).
 
 ```python
 from minigrad import SPANDA, SpikingSequential, SpikingLinear, RateDecoder
@@ -302,7 +302,7 @@ loss.backward()
 * **Standalone ANSI C99 Export:** Compiles active models and computational graphs into self-contained C code (`export_c`, `to_c`, `compile_to_library`).
 * **Binary Weight Decoupling (`model.bin`):** Instant compilation (< 0.5s) and support for $10\text{M}+$ parameter models via memory-mapped binary weights.
 * **INT8 Post-Training Quantization:** Cuts parameter storage by $75\%$ using native `int8_t` weights with per-tensor scales and fused integer-float kernels.
-* **Activation Liveness Arena:** Re-uses intermediate memory using interval graph coloring, slashing RAM consumption by $80\% - 95\%$.
+* **Greedy Liveness-Based Interval Memory Reuse:** Re-uses intermediate memory using greedy interval graph coloring on activation liveness intervals, reducing activation RAM consumption by up to $35\%-90\%$ depending on DAG topology.
 * **Cache Tiling & OpenMP:** $32 \times 32$ loop blocking and `#pragma omp parallel for` multithreading for multi-core server throughput.
 * **Static Key-Value (KV) Cache:** Native C multi-head attention KV-cache for streaming next-token generation in causal transformers (miniGPT).
 * **Firmware & Embedded Ready:** 100% static buffers (0 bytes `malloc`), runs on microcontrollers (ESP32, STM32, ARM Cortex-M) with zero Python or runtime dependencies.
@@ -313,9 +313,9 @@ loss.backward()
 * Kernel fusion: fuses Linear + ReLU / GELU into single-loop execution kernels, eliminating intermediate memory allocations.
 
 ### Pillar 4: Pure Functional `vmap` & DP-SGD (`minigrad/vmap.py`, `minigrad/dp.py`)
-* Vectorized batching transform without Python loops.
-* Reverse-mode batched Jacobian calculation (`jacrev` / `batched_jacobian`) running **$7.6\times$ faster**.
-* Differentially Private SGD (DP-SGD) with analytical $(\epsilon, \delta)$ Rényi privacy guarantees.
+* **Functional Batching & Per-Sample Mapping (`vmap`):** Vectorizes single-example functions across arbitrary input batch dimensions without explicit outer Python loops.
+* **Reverse-Mode Batched Jacobian Calculation (`jacrev` / `batched_jacobian`):** Efficient per-sample vectorization running **$7.6\times$ faster** than sequential loops.
+* **Differential Privacy Mechanism & Prototype (DP-SGD):** Implements per-sample gradient clipping and calibrated Gaussian noise injection with Rényi Differential Privacy (RDP) accounting for subsampled Gaussian mechanisms across bounded training steps.
 
 ---
 
@@ -351,7 +351,8 @@ python examples/16_spanda_neuromorphic_snn.py       # S.P.A.N.D.A. Neuromorphic 
 
 ## 🧪 Verification & Testing
 
-miniGrad enforces rigorous mathematical and regression testing across 319 test cases, differential suites, and static typing:
+miniGrad enforces rigorous mathematical and regression testing across 319 collected test cases, differential suites, and static typing:
+* **319 tests collected**: **281 tests** pass in zero-dependency pure-NumPy CI, and **38 optional cross-framework parity tests** execute and pass when PyTorch and HuggingFace Transformers are installed.
 
 ```bash
 # Run complete test suite (319 tests across contracts, lifecycles, random DAGs, compiler benchmarks)
