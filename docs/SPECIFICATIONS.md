@@ -30,7 +30,7 @@ $$\frac{d\mathcal{L}}{d\theta} = -\int_{t_1}^{t_0} a(t)^\top \frac{\partial f_\t
 
 ### 1.4 Reference Validation Experiment
 - **Showcase:** `examples/12_sutra_neural_ode.py`
-- **Validation Standard:** Evaluated on 2D spiral dynamical systems against the closed-form analytical matrix exponential solution $z(t) = \exp(At) z_0$, confirming convergence within $5.55 \times 10^{-17}$ machine precision limits.
+- **Validation Standard:** Evaluated on 2D spiral dynamical systems against the closed-form analytical matrix exponential solution $z(t) = \exp(At) z_0$. Observed validation result: convergence within $5.55 \times 10^{-17}$ on the reference experiment.
 
 ### 1.5 Limitations & Non-Goals
 - Designed for non-stiff ordinary differential equations. Stiff systems requiring implicit differential-algebraic solvers (e.g. Radau IIA) are outside the current architectural scope.
@@ -55,9 +55,9 @@ $$x_1 = y_1 - f(x_2)$$
 - **Activation Caching Invariant:** $\mathcal{O}(1)$ forward activation node footprint in the autograd DAG. Forward passes discard intermediate activations across arbitrarily deep stacks (e.g. 50+ to 500+ layers).
 - **Dynamic Reconstruction:** Intermediate activation values are dynamically reconstructed in reverse topological order during the backward pass before computing parameter gradients.
 
-### 2.3 Known Approximations & Error Bounds
+### 2.3 Known Approximations & Numerical Accuracy
 - **Zero Mathematical Approximations:** Reconstruction error is governed strictly by IEEE-754 floating-point arithmetic.
-- **Empirical Bound:** Maximum reconstruction divergence $\|x_{\text{reconstructed}} - x_{\text{original}}\|_\infty < 3.0 \times 10^{-16}$ in float64 precision.
+- **Observed Validation Result:** Empirical reconstruction divergence $\|x_{\text{reconstructed}} - x_{\text{original}}\|_\infty < 3.0 \times 10^{-16}$ in float64 precision on the 50-layer reference showcase.
 
 ### 2.4 Reference Validation Experiment
 - **Showcase:** `examples/13_avyaya_reversible_computing.py`
@@ -90,9 +90,9 @@ $$\mathrm{Var}[h(X)] \approx \left( h'(\mu_X) \right)^2 \sigma_X^2$$
 - Maximum likelihood training under heteroscedastic uncertainty via `GaussianNLLLoss`:
   $$\mathcal{L}_{\text{NLL}}(\mu, \sigma^2, y) = \frac{1}{2} \log(\sigma^2) + \frac{(y - \mu)^2}{2\sigma^2} + \text{const}$$
 
-### 3.3 Known Approximations & Error Bounds
+### 3.3 Known Approximations & Observed Discrepancy
 - Off-diagonal covariance elements $\mathrm{Cov}[X_i, X_j]$ are assumed zero to preserve $\mathcal{O}(D)$ linear space/time complexity rather than $\mathcal{O}(D^2)$ covariance matrix explosion.
-- Analytical Taylor expansions are validated against empirical Monte Carlo sampling ($N=100,000$), demonstrating $< 0.05\%$ discrepancy on standard Gaussian inputs.
+- **Observed Validation Result:** Analytical Taylor expansions demonstrated $< 0.05\%$ discrepancy against empirical Monte Carlo sampling ($N=100,000$) on standard Gaussian test distributions.
 
 ### 3.4 Reference Validation Experiment
 - **Showcase:** `examples/14_pramana_distributional_uncertainty.py`

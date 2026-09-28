@@ -296,20 +296,25 @@ def compute_dp_sgd_step(
     return private_grads, telemetry
 
 
-# ── Analytical Rényi Differential Privacy (RDP) Accountant ──────────
+# ── Analytical Rényi Differential Privacy (RDP) Upper-Bound Accountant ──────────
 
 def compute_step_rdp(sample_rate: float, noise_multiplier: float, alpha: int) -> float:
     """
-    Computes the exact analytical Rényi Differential Privacy (RDP) at integer order `alpha`
+    Computes the analytical Rényi Differential Privacy (RDP) upper bound at integer order `alpha`
     for a single step of a subsampled Gaussian mechanism.
 
-    Formulation:
-    - For full-batch (q=1): RDP(alpha) = alpha / (2 * sigma^2) (Mironov 2017)
-    - For subsampled Gaussian (0 < q < 1):
+    Formulation & Literature:
+    - Full-batch Gaussian (q=1): RDP(alpha) = alpha / (2 * sigma^2) (Mironov 2017).
+    - Subsampled Gaussian (0 < q < 1):
       S(alpha) = sum_{k=0}^alpha binom(alpha, k) * q^k * (1-q)^(alpha-k) * exp(k*(k-1) / (2*sigma^2))
-      RDP(alpha) <= log(S(alpha)) / (alpha - 1) (Wang, Balle, Kasiviswanathan 2019, Theorem 11)
+      RDP(alpha) <= log(S(alpha)) / (alpha - 1) (Wang, Balle, Kasiviswanathan 2019, Theorem 11).
 
-    Evaluated via numerically stable log-sum-exp to eliminate floating overflow.
+    Assumptions & Scope:
+    - Sampling Model: Assumes Poisson subsampling (or uniform subsampling with replacement) at rate q = B / N.
+    - Adjacency: Standard add/remove one example adjacency model.
+    - Caller Responsibility: The caller is responsible for ensuring that training batches and dataset sampling
+      adhere to the documented subsampling model.
+    - Evaluated via numerically stable log-sum-exp to eliminate floating overflow.
     """
     if alpha < 2:
         raise ValueError(f"alpha must be an integer >= 2, got {alpha}")

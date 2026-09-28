@@ -65,6 +65,12 @@ def _compute_vjp(node: Tensor, g: Tensor) -> Tuple[Optional[Tensor], ...]:
         vjp_b = unbroadcast_tensor(g * a, b.shape) if b.requires_grad else None
         return (vjp_a, vjp_b)
 
+    elif op == "div":
+        a, b = children
+        vjp_a = unbroadcast_tensor(g / b, a.shape) if a.requires_grad else None
+        vjp_b = unbroadcast_tensor(-g * a / (b ** 2), b.shape) if b.requires_grad else None
+        return (vjp_a, vjp_b)
+
     elif op == "neg":
         (a,) = children
         return (-g if a.requires_grad else None,)

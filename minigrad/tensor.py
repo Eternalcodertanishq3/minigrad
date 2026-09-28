@@ -238,16 +238,54 @@ class Tensor:
         else:
             res_dtype = np.result_type(self.data.dtype, other)
             other_t = Tensor(other, dtype=res_dtype)
-        return self * (other_t ** (-1))
+
+        # In Python/NumPy, true division always produces a floating-point type
+        if not np.issubdtype(res_dtype, np.floating):
+            res_dtype = np.dtype(np.float64)
+
+        self_data = self.data.astype(res_dtype) if self.data.dtype != res_dtype else self.data
+        other_data = other_t.data.astype(res_dtype) if other_t.data.dtype != res_dtype else other_t.data
+
+        with np.errstate(divide="ignore", invalid="ignore"):
+            out_data = self_data / other_data
+
+        out = Tensor(
+            out_data,
+            dtype=res_dtype,
+            requires_grad=self.requires_grad or other_t.requires_grad,
+            _children=(self, other_t),
+            _op="div",
+        )
+
+        def _backward() -> None:
+            # d(a/b)/da = 1/b, d(a/b)/db = -a / (b^2)
+            grad = out.grad
+            if self.requires_grad:
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    da = (1.0 / other_data) * grad
+                dx = Tensor._unbroadcast(da, self.data.shape)
+                if isinstance(dx, np.ndarray) and dx.dtype != self.dtype:
+                    dx = dx.astype(self.dtype)
+                self.grad += dx
+            if other_t.requires_grad:
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    db = (-self_data / (other_data ** 2)) * grad
+                dy = Tensor._unbroadcast(db, other_t.data.shape)
+                if isinstance(dy, np.ndarray) and dy.dtype != other_t.dtype:
+                    dy = dy.astype(other_t.dtype)
+                other_t.grad += dy
+
+        out._backward = _backward
+        return out
 
     def __rtruediv__(self, other: Union[Tensor, ArrayLike]) -> Tensor:
         if isinstance(other, Tensor):
-            res_dtype = np.result_type(self.data.dtype, other.data.dtype)
-            other_t = other
-        else:
-            res_dtype = np.result_type(self.data.dtype, other)
-            other_t = Tensor(other, dtype=res_dtype)
-        return other_t * (self ** (-1))
+            return other.__truediv__(self)
+        res_dtype = np.result_type(other, self.data.dtype)
+        if not np.issubdtype(res_dtype, np.floating):
+            res_dtype = np.dtype(np.float64)
+        other_t = Tensor(other, dtype=res_dtype)
+        return other_t.__truediv__(self)
 
     def __pow__(self, other: Union[int, float, Tensor]) -> Tensor:
         other_t = self._ensure_tensor(other) if isinstance(other, Tensor) else other
@@ -255,11 +293,18 @@ class Tensor:
         res_dtype = np.result_type(self.data.dtype, other_data)
 
         is_negative = (other < 0) if not isinstance(other, Tensor) else np.any(other.data < 0)
+        # If exponent is negative, integer bases must be promoted to float (Python/NumPy rule)
+        if is_negative and not np.issubdtype(res_dtype, np.floating):
+            res_dtype = np.dtype(np.float64)
+
+        self_data = self.data.astype(res_dtype) if self.data.dtype != res_dtype else self.data
+        other_arr = np.asarray(other_data).astype(res_dtype) if np.asarray(other_data).dtype != res_dtype else other_data
+
         if is_negative:
-            safe_base = np.where(self.data == 0, 1e-12, self.data)
-            out_data = safe_base ** other_data
+            safe_base = np.where(self_data == 0, 1e-12, self_data)
+            out_data = safe_base ** other_arr
         else:
-            out_data = self.data ** other_data
+            out_data = self_data ** other_arr
 
         out = Tensor(
             out_data,
@@ -273,18 +318,14 @@ class Tensor:
         def _backward() -> None:
             # d(x^n)/dx = n * x^(n-1)
             is_zero = (other == 0) if not isinstance(other, Tensor) else np.all(other.data == 0)
-            is_negative = (other < 0) if not isinstance(other, Tensor) else np.any(other.data < 0)
             if self.requires_grad:
-                if is_zero:
-                    pass
-                elif is_negative:
-                    safe_data = np.where(self.data == 0, 1e-12, self.data)
-                    dx = (other_data * (safe_data ** (other_data - 1))) * out.grad
-                    if isinstance(dx, np.ndarray) and dx.dtype != self.dtype:
-                        dx = dx.astype(self.dtype)
-                    self.grad += dx
-                else:
-                    dx = (other_data * (self.data ** (other_data - 1))) * out.grad
+                if not is_zero:
+                    if is_negative:
+                        safe_data = np.where(self_data == 0, 1e-12, self_data)
+                        dx_val = (other_arr * (safe_data ** (other_arr - 1))) * out.grad
+                    else:
+                        dx_val = (other_arr * (self_data ** (other_arr - 1))) * out.grad
+                    dx = Tensor._unbroadcast(dx_val, self.data.shape)
                     if isinstance(dx, np.ndarray) and dx.dtype != self.dtype:
                         dx = dx.astype(self.dtype)
                     self.grad += dx
@@ -292,7 +333,7 @@ class Tensor:
                 if not is_zero:
                     # d(a^b)/db = a^b * ln(a) (EXACT: NO +1e-9)
                     with np.errstate(divide="ignore", invalid="ignore"):
-                        log_a = np.log(self.data)
+                        log_a = np.log(self_data)
                     dy = Tensor._unbroadcast(out.data * log_a * out.grad, other_t.data.shape)
                     if isinstance(dy, np.ndarray) and dy.dtype != other_t.dtype:
                         dy = dy.astype(other_t.dtype)
@@ -305,6 +346,9 @@ class Tensor:
         if isinstance(other, Tensor):
             return other.__pow__(self)
         res_dtype = np.result_type(other, self.data.dtype)
+        is_self_negative = np.any(self.data < 0)
+        if is_self_negative and not np.issubdtype(res_dtype, np.floating):
+            res_dtype = np.dtype(np.float64)
         other_t = Tensor(other, dtype=res_dtype)
         return other_t.__pow__(self)
 

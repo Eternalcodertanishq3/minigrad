@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.1] - 2026-09-28
+
+### 🛡️ Hardened & Verified
+- **Direct True Division & Exact Quotient Derivatives (`minigrad/tensor.py`, `minigrad/autograd.py`):**
+  - Replaced legacy power-decomposition (`a * (b ** -1)`) with direct quotient division (`self_data / other_data`).
+  - Added automatic float promotion (`float32` or `float64`) for integer inputs under division, eliminating integer truncation bugs (e.g., `4 / 2` correctly evaluates to `2.0` instead of `0`).
+  - Implemented exact analytical quotient derivatives: $\frac{\partial}{\partial a}(a/b) = \frac{1}{b}$ and $\frac{\partial}{\partial b}(a/b) = -\frac{a}{b^2}$.
+  - Added dedicated `div` vector-Jacobian product (VJP) handler in `minigrad/autograd.py`.
+- **Negative Exponent Float Promotion & Safe Base (`minigrad/tensor.py`):**
+  - Guaranteed float promotion for integer bases raised to negative exponents in `Tensor.__pow__` and `__rpow__`.
+  - Preserved numerical stability with zero-base epsilon substitution (`safe_base`) to prevent division by zero or invalid operations.
+- **Exhaustive Binary Op Dtype Promotion Test Matrix (`tests/test_core_semantics.py`):**
+  - Expanded test coverage across all 16 pairwise combinations of `float32`, `float64`, `int32`, `int64` and scalar types for `+`, `-`, `*`, `/`, and `**`.
+- **Subsampled-Gaussian RDP Upper-Bound Specifications (`minigrad/dp.py`, `docs/SPECIFICATIONS.md`):**
+  - Calibrated Differential Privacy documentation to specify exact analytical upper-bound Rényi Differential Privacy (Wang et al., 2019) with documented Poisson subsampling assumptions.
+  - Refined benchmark and empirical claims in specifications to reflect observed validation results.
+- **Full Parity CI Automation (`.github/workflows/ci.yml`):**
+  - Added `test-full-parity` GitHub Actions workflow matrix job with PyTorch and Hugging Face Transformers installed.
+  - Guarantees automated execution and verification of all 371 tests across the suite without skipping optional cross-framework parity tests.
+
+---
+
 ## [1.3.0] - 2026-09-28
 
 ### 🛡️ Hardened & Verified

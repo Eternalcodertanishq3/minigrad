@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/Eternalcodertanishq3/minigrad/actions/workflows/ci.yml/badge.svg)](https://github.com/Eternalcodertanishq3/minigrad/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/minigrad-framework.svg?color=blue)](https://pypi.org/project/minigrad-framework/)
-[![Tests](https://img.shields.io/badge/tests-363%20collected%20%7C%20325%20zero--dep-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-371%20collected%20%7C%20333%20zero--dep-brightgreen.svg)](tests/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-pure%20numpy-red.svg)](pyproject.toml)
@@ -84,7 +84,7 @@ miniGrad maintains explicit maturity boundaries between verified production-grad
 | Capability / Metric | `miniGrad` | `PyTorch` | `micrograd` / `tinygrad` |
 | :--- | :---: | :---: | :---: |
 | **Dependencies** | **Zero (Pure NumPy)** | ~2.5 GB C++/CUDA binaries | Pure Python / minimal C |
-| **Full Test Suite Speed** | **325 tests collected (287 zero-dep CI + 38 parity) in ~30s** | Minutes / Hours | Few dozen tests |
+| **Full Test Suite Speed** | **371 tests collected (333 zero-dep CI + 38 parity) in ~35s** | Minutes / Hours | Few dozen tests |
 | **Glass-Box Root-Cause NaN Debugger** | **Native Built-in** | `detect_anomaly` (slow) | ❌ None |
 | **Zero-Runtime C Code Generator** | **Native (`export_c`)** | TorchScript / ExecuTorch | TinyGrad has C-gen |
 | **Symbolic Graph Optimization & Fusion** | **Native Built-in** | TorchDynamo / Inductor | TinyGrad has fusion |
@@ -315,8 +315,8 @@ loss.backward()
 
 ### Pillar 4: Pure Functional `vmap` & DP-SGD (`minigrad/vmap.py`, `minigrad/dp.py`)
 * **Functional Batching & Per-Sample Mapping (`vmap`):** Provides a clean functional vectorized-map interface across arbitrary input batch dimensions via per-sample mapping and batch reconstruction.
-* **Reverse-Mode Batched Jacobian Calculation (`jacrev` / `batched_jacobian`):** Efficient per-sample vectorization running **$7.6\times$ faster** than sequential loops.
-* **Differential Privacy Engine & Analytical RDP Accountant (`dp.py`):** Implements per-sample gradient clipping, calibrated Gaussian noise injection, and an exact analytical Rényi Differential Privacy (`RDPAccountant`, `compute_rdp_epsilon`) accountant based on Wang et al. (2019) computing tight cumulative $(\epsilon, \delta)$-DP bounds across subsampled training steps.
+* **Reverse-Mode Batched Jacobian Calculation (`jacrev` / `batched_jacobian`):** Efficient per-sample functional batching providing substantial speedups over sequential single-sample autograd loops.
+* **Differential Privacy Engine & Analytical RDP Upper-Bound Accountant (`dp.py`):** Implements per-sample gradient clipping, calibrated Gaussian noise injection, and an analytical Rényi Differential Privacy (`RDPAccountant`, `compute_rdp_epsilon`) upper-bound accountant based on Wang, Balle & Kasiviswanathan (2019) computing tight cumulative $(\epsilon, \delta)$-DP bounds under documented Poisson subsampling assumptions.
 
 ---
 
@@ -352,11 +352,11 @@ python examples/16_spanda_neuromorphic_snn.py       # S.P.A.N.D.A. Neuromorphic 
 
 ## 🧪 Verification & Testing
 
-miniGrad enforces rigorous mathematical and regression testing across 363 collected test cases, differential suites, and static typing:
-* **363 tests collected**: **325 tests** pass natively in pure-NumPy with zero external dependencies (the default CI environment), and **38 optional cross-framework parity tests** execute and pass when PyTorch and HuggingFace Transformers are installed (in the full development environment with optional frameworks installed, **363 / 363 pass**).
+miniGrad enforces rigorous mathematical and regression testing across 371 collected test cases, differential suites, and static typing:
+* **371 tests collected**: **333 tests** pass natively in pure-NumPy with zero external dependencies (the default CI environment), and **38 optional cross-framework parity tests** execute and pass in the `test-full-parity` CI matrix when PyTorch and Hugging Face Transformers are installed (in the full development environment with optional frameworks installed, **371 / 371 pass**).
 
 ```bash
-# Run complete test suite (363 tests across contracts, lifecycles, random DAGs, compiler benchmarks)
+# Run complete test suite (371 tests across contracts, lifecycles, random DAGs, compiler benchmarks)
 python -m pytest
 
 # Run strict static type checking (0 errors across 70 source files)

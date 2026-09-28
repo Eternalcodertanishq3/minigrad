@@ -28,9 +28,9 @@ from minigrad.tensor import Tensor
 @pytest.mark.parametrize("dtype1", [np.float32, np.float64, np.int32, np.int64])
 @pytest.mark.parametrize("dtype2", [np.float32, np.float64, np.int32, np.int64])
 def test_dtype_promotion_binary_ops(dtype1, dtype2):
-    """Binary operations between all tensor dtype pairs follow NumPy result_type promotion."""
-    a_arr = np.array([2, 4], dtype=dtype1)
-    b_arr = np.array([3, 5], dtype=dtype2)
+    """Binary operations (+, -, *, /) between all tensor dtype pairs follow NumPy promotion."""
+    a_arr = np.array([12, 24], dtype=dtype1)
+    b_arr = np.array([3, 4], dtype=dtype2)
     expected_dtype = np.result_type(a_arr, b_arr)
 
     a = Tensor(a_arr)
@@ -51,12 +51,37 @@ def test_dtype_promotion_binary_ops(dtype1, dtype2):
     assert c_mul.dtype == expected_dtype, f"Mul dtype mismatch: {c_mul.dtype} vs {expected_dtype}"
     np.testing.assert_array_equal(c_mul.data, a_arr * b_arr)
 
+    # True Division (always produces float32 or float64 per NumPy semantics)
+    c_div = a / b
+    expected_div = a_arr / b_arr
+    assert c_div.dtype == expected_div.dtype, f"Div dtype mismatch: {c_div.dtype} vs {expected_div.dtype}"
+    np.testing.assert_allclose(c_div.data, expected_div)
 
-@pytest.mark.parametrize("tensor_dtype", [np.float32, np.float64])
+
+@pytest.mark.parametrize("dtype", [np.float32, np.float64, np.int32, np.int64])
+def test_dtype_promotion_power(dtype):
+    """Power operations with positive and negative exponents follow normalized promotion."""
+    a_arr = np.array([2, 4], dtype=dtype)
+    a = Tensor(a_arr)
+
+    # Positive integer power preserves dtype
+    c_pow2 = a ** 2
+    expected_pos = a_arr ** 2
+    assert c_pow2.dtype == expected_pos.dtype
+    np.testing.assert_allclose(c_pow2.data, expected_pos)
+
+    # Negative power always promotes to floating point
+    c_pow_neg = a ** -1
+    expected_float_dtype = np.float32 if dtype == np.float32 else np.float64
+    assert c_pow_neg.dtype == expected_float_dtype
+    np.testing.assert_allclose(c_pow_neg.data, a_arr.astype(expected_float_dtype) ** -1)
+
+
+@pytest.mark.parametrize("tensor_dtype", [np.float32, np.float64, np.int32, np.int64])
 @pytest.mark.parametrize("scalar_val", [2.5, 3])
 def test_dtype_promotion_with_python_scalars(tensor_dtype, scalar_val):
     """Tensors combined with Python float/int scalars adhere to NumPy type promotion rules."""
-    a_arr = np.array([1.5, 2.5], dtype=tensor_dtype)
+    a_arr = np.array([12, 24], dtype=tensor_dtype)
     a = Tensor(a_arr)
 
     # Left operation: Tensor + scalar
@@ -74,6 +99,18 @@ def test_dtype_promotion_with_python_scalars(tensor_dtype, scalar_val):
     out_mul = a * scalar_val
     assert out_mul.dtype == expected_left
     np.testing.assert_allclose(out_mul.data, a_arr * scalar_val)
+
+    # Division: Tensor / scalar
+    out_div = a / scalar_val
+    expected_div = a_arr / scalar_val
+    assert out_div.dtype == expected_div.dtype
+    np.testing.assert_allclose(out_div.data, expected_div)
+
+    # Division: scalar / Tensor
+    out_rdiv = scalar_val / a
+    expected_rdiv = scalar_val / a_arr
+    assert out_rdiv.dtype == expected_rdiv.dtype
+    np.testing.assert_allclose(out_rdiv.data, expected_rdiv)
 
 
 def test_matmul_dtype_promotion():
