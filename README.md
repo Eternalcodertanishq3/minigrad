@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/Eternalcodertanishq3/minigrad/actions/workflows/ci.yml/badge.svg)](https://github.com/Eternalcodertanishq3/minigrad/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/minigrad-framework.svg?color=blue)](https://pypi.org/project/minigrad-framework/)
-[![Tests](https://img.shields.io/badge/tests-479%20collected%20%7C%20441%20zero--dep-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-483%20collected%20%7C%20445%20zero--dep-brightgreen.svg)](tests/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-pure%20numpy-red.svg)](pyproject.toml)
@@ -352,11 +352,11 @@ python examples/16_spanda_neuromorphic_snn.py       # S.P.A.N.D.A. Neuromorphic 
 
 ## 🧪 Verification & Testing
 
-miniGrad enforces rigorous mathematical and regression testing across 479 collected test cases, differential suites, and static typing:
-* **479 tests collected**: **441 tests** pass natively in pure-NumPy with zero external dependencies (the default CI environment), and **38 optional cross-framework parity tests** execute and pass in the `test-full-parity` CI matrix when PyTorch and Hugging Face Transformers are installed (in the full development environment with optional frameworks installed, **479 / 479 pass**).
+miniGrad enforces rigorous mathematical and regression testing across 483 collected test cases, differential suites, and static typing:
+* **483 tests collected**: **445 tests** pass natively in pure-NumPy with zero external dependencies (the default CI environment), and **38 optional cross-framework parity tests** execute and pass in the `test-full-parity` CI matrix when PyTorch and Hugging Face Transformers are installed (in the full development environment with optional frameworks installed, **483 / 483 pass**).
 
 ```bash
-# Run complete test suite (479 tests across contracts, lifecycles, random DAGs, compiler benchmarks)
+# Run complete test suite (483 tests across contracts, lifecycles, random DAGs, compiler benchmarks)
 python -m pytest
 
 # Run strict static type checking (0 errors across 70 source files)
@@ -369,34 +369,38 @@ python -m ruff check minigrad tests
 ```text
 ============================= test session starts =============================
 platform win32 -- Python 3.11.0, pytest-8.3.4
-collected 325 items
+collected 483 items
 
-tests/test_api_contracts.py ............                                 [  3%]
-tests/test_compiler.py .............                                     [  7%]
-tests/test_compiler_benchmarks.py ...                                    [  8%]
-tests/test_contracts.py ...............                                  [ 12%]
-tests/test_double_backward.py .............                              [ 16%]
-tests/test_glassbox.py ........                                          [ 19%]
-tests/test_grad_check.py ..................                              [ 24%]
-tests/test_graph_opt.py ............                                     [ 28%]
-tests/test_layers.py ............                                        [ 32%]
-tests/test_lifecycle.py ...........                                      [ 35%]
-tests/test_new_features.py ...................                           [ 41%]
-tests/test_ops.py ......................                                 [ 48%]
-tests/test_optim.py .....                                                [ 49%]
-tests/test_public_api.py .......                                         [ 51%]
-tests/test_random_dag_opt.py ........................................... [ 64%]
-..........................................................               [ 82%]
-tests/test_safetensors.py ......                                         [ 84%]
-tests/test_spanda.py .......                                             [ 86%]
+tests/test_api_contracts.py ............                                 [  2%]
+tests/test_compiler.py ...............                                   [  5%]
+tests/test_compiler_benchmarks.py ...                                    [  6%]
+tests/test_contracts.py ...............                                  [  9%]
+tests/test_core_semantics.py ........................................... [ 18%]
+........................................................................ [ 33%]
+........................                                                 [ 38%]
+tests/test_double_backward.py .............                              [ 40%]
+tests/test_glassbox.py ........                                          [ 42%]
+tests/test_grad_check.py ..................                              [ 46%]
+tests/test_graph_opt.py ............                                     [ 48%]
+tests/test_layers.py ............                                        [ 51%]
+tests/test_lifecycle.py ...........                                      [ 53%]
+tests/test_new_features.py ...................                           [ 57%]
+tests/test_ops.py ......................                                 [ 62%]
+tests/test_optim.py .....                                                [ 63%]
+tests/test_public_api.py .......                                         [ 64%]
+tests/test_random_dag_opt.py ........................................... [ 73%]
+..........................................................               [ 85%]
+tests/test_safetensors.py ......                                         [ 86%]
+tests/test_spanda.py .......                                             [ 88%]
 tests/test_sutra.py ........                                             [ 89%]
 tests/test_tarka.py ........                                             [ 91%]
-tests/test_vmap.py ...........                                           [ 95%]
-tests/test_avyaya.py ........                                            [ 97%]
+tests/test_vmap.py ...........                                           [ 93%]
+tests/test_avyaya.py ........                                            [ 95%]
 tests/test_pramana.py ........                                           [100%]
 
-============================ 325 passed in 31.68s =============================
-(In pure-NumPy CI without optional PyTorch: 287 passed, 38 skipped in ~12s)
+============================ 483 passed in 22.13s =============================
+(In pure-NumPy CI without optional PyTorch: 445 passed, 38 skipped in ~9s;
+ In full-parity CI with PyTorch + Transformers: 483 passed in ~22s)
 ```
 
 ---

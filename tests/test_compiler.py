@@ -363,7 +363,7 @@ def test_cache_tiling_and_openmp(tmp_path: Path):
 
 @pytest.mark.skipif(CLANG_OR_GCC is None, reason="No C compiler found")
 def test_static_kv_cache_engine(tmp_path: Path):
-    """Test static Key-Value (KV) cache generation for streaming attention."""
+    """Test static Key-Value (KV) cache generation for streaming attention with boundary safety."""
     model = Sequential([Linear(16, 16)])
     x = Tensor(np.zeros((1, 16), dtype=np.float32), requires_grad=False)
 
@@ -375,7 +375,7 @@ def test_static_kv_cache_engine(tmp_path: Path):
         include_main=False,
         model_name="kv_test",
         kv_cache=True,
-        # Default internal dimensions
+        max_seq_len=4,
     )
 
     c_code = c_file.read_text(encoding="utf-8")
@@ -384,7 +384,7 @@ def test_static_kv_cache_engine(tmp_path: Path):
     assert "kv_test_reset_kv_cache" in c_code
     assert "kv_test_attention_step" in c_code
 
-    # Create a small C test harness to verify sequential multi-step attention
+    # Create C test harness to verify sequential stepping up to max_seq_len and overflow rejection
     harness = """
 #include <stdio.h>
 #include <assert.h>
@@ -398,12 +398,24 @@ int main(void) {
     float v[128] = {0.3f};
     float out[128] = {0.0f};
 
-    /* Run 3 sequential token generation steps */
-    for (int t = 0; t < 3; t++) {
-        kv_test_attention_step(q, k, v, out);
+    /* Run sequential token generation up to max_seq_len (4) */
+    for (int t = 0; t < 4; t++) {
+        int status = kv_test_attention_step(q, k, v, out);
+        assert(status == 0);
         assert(kv_test_get_kv_step() == t + 1);
     }
-    printf("KV-Cache successfully stepped 3 tokens.\\n");
+    assert(kv_test_get_kv_step() == 4);
+
+    /* Attempt step beyond max_seq_len: must be safely rejected with status -1 */
+    int overflow_status = kv_test_attention_step(q, k, v, out);
+    assert(overflow_status == -1);
+    assert(kv_test_get_kv_step() == 4); /* Cache step must not increment past capacity */
+
+    /* Reset cache */
+    kv_test_reset_kv_cache();
+    assert(kv_test_get_kv_step() == 0);
+
+    printf("KV-Cache successfully stepped 4 tokens and rejected overflow.\\n");
     return 0;
 }
 """
@@ -416,7 +428,8 @@ int main(void) {
 
     run_res = subprocess.run([str(exe_file)], capture_output=True, text=True, check=False)
     assert run_res.returncode == 0, f"Execution failed: {run_res.stderr}"
-    assert "KV-Cache successfully stepped 3 tokens." in run_res.stdout
+    assert "KV-Cache successfully stepped 4 tokens and rejected overflow." in run_res.stdout
+
 
 
 @pytest.mark.skipif(CLANG_OR_GCC is None, reason="No C compiler found")
@@ -474,3 +487,62 @@ int main(void) {
     parts = run_res.stdout.strip().split(":")[-1].split(",")
     c_out = [float(p.strip()) for p in parts]
     np.testing.assert_allclose(c_out, py_out, rtol=1e-4, atol=1e-4)
+
+
+@pytest.mark.skipif(CLANG_OR_GCC is None, reason="No C compiler found")
+def test_c_export_division_ieee754_parity(tmp_path: Path):
+    """Test compiled C division kernel IEEE-754 semantics parity (inf, -inf, nan, finite)."""
+    # Create a small computation graph: x / c
+    x = Tensor([1.0, -1.0, 0.0, 4.0], requires_grad=False)
+    c = Tensor([0.0, 0.0, 0.0, 2.0], requires_grad=False)
+    out = x / c
+
+    c_file = tmp_path / "div_model.c"
+    exe_file = tmp_path / ("div_model.exe" if os.name == "nt" else "div_model")
+
+    export_c(
+        out,
+        example_input=x,
+        filename=c_file,
+        include_main=False,
+        model_name="div_test",
+        optimize=False,
+    )
+
+    c_code = c_file.read_text(encoding="utf-8")
+    assert "minigrad_div" in c_code
+
+    harness = """
+#include <stdio.h>
+#include <math.h>
+#include <assert.h>
+
+int main(void) {
+    float in[4] = {1.0f, -1.0f, 0.0f, 4.0f};
+    float out[4] = {0.0f};
+
+    div_test_forward(in, out);
+
+    /* 1.0f / 0.0f -> +inf */
+    assert(isinf(out[0]) && out[0] > 0.0f);
+    /* -1.0f / 0.0f -> -inf */
+    assert(isinf(out[1]) && out[1] < 0.0f);
+    /* 0.0f / 0.0f -> nan */
+    assert(isnan(out[2]));
+    /* 4.0f / 2.0f -> 2.0f */
+    assert(fabsf(out[3] - 2.0f) < 1e-5f);
+
+    printf("IEEE-754 C division parity verified: +inf, -inf, nan, 2.0\\n");
+    return 0;
+}
+"""
+    test_c_file = tmp_path / "test_div_runner.c"
+    test_c_file.write_text(c_code + "\n" + harness, encoding="utf-8")
+
+    res = _compile_c(test_c_file, exe_file)
+    assert res.returncode == 0, f"Compilation failed: {res.stderr}"
+
+    run_res = subprocess.run([str(exe_file)], capture_output=True, text=True, check=False)
+    assert run_res.returncode == 0, f"Execution failed: {run_res.stderr}"
+    assert "IEEE-754 C division parity verified" in run_res.stdout
+

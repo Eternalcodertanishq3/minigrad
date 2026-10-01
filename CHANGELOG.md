@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.2] - 2026-10-01
+
+### 🛡️ Hardened & Verified
+- **Elementwise Zero-Base Negative Power Masking (`minigrad/tensor.py`):**
+  - Resolved mixed-sign tensor power bug: when evaluating mixed exponent vectors (e.g., `Tensor([0, 2]) ** Tensor([2, -1])`), replaced global `is_negative` scalar check with strict elementwise masking `(base == 0) & (exp < 0)`.
+  - Non-negative powers of zero (e.g., $0^2$) evaluate to exact `0.0`, while negative powers of zero evaluate according to Contract B ($10^{-12}$ safeguard), yielding exact `[0.0, 0.5]` for `[0, 2] ** [2, -1]`.
+- **C KV-Cache Bounds Safety & Static Scratch Memory (`minigrad/compiler.py`):**
+  - Added strict capacity guard `if (step < 0 || step >= max_seq_len) return -1;` to `minigrad_attention_kv_cache`, preventing buffer overruns past `max_seq_len`.
+  - Replaced stack-allocated `float scores[512]` with static model-level buffer `static float {model}_scores[MAX_SEQ_LEN]`, eliminating VLA/stack overflow limitations and maintaining zero dynamic allocation.
+  - Updated attention step function to return integer status codes (`0` on success, `-1` on boundary overflow).
+- **C99 IEEE-754 Division Semantics Parity (`minigrad/compiler.py`):**
+  - Aligned C compiler `minigrad_div` kernel to native IEEE-754 division `out[i] = A[i] / B[i];`, establishing bit-exact semantic parity with Python miniGrad (`1.0 / 0.0 -> +inf`, `-1.0 / 0.0 -> -inf`, `0.0 / 0.0 -> nan`).
+- **Comprehensive Parity CI & Differential Testing:**
+  - Expanded test suite to **483 tests** (445 zero-dependency tests + 38 optional cross-framework parity tests, 100% passing).
+  - Added finite-difference gradient checks for broadcasted `Tensor / Tensor` and `Tensor ** Tensor` vs autograd.
+  - Aligned CI type checker in `.github/workflows/ci.yml` to check all 70 source files (`minigrad/` and `tests/`) with 0 issues.
+
+---
+
 ## [1.3.1] - 2026-09-28
 
 ### 🛡️ Hardened & Verified
@@ -35,7 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🛡️ Hardened & Verified
 - **Analytical Rényi Differential Privacy (RDP) Accountant (`minigrad/dp.py`):**
-  - Implemented exact closed-form RDP composition and conversion to $(\epsilon, \delta)$-DP based on Wang, Balle, Kasiviswanathan (2019) and Mironov (2017).
+  - Implemented analytical RDP upper-bound accountant using integer-order subsampled-Gaussian bounds and conversion to $(\epsilon, \delta)$-DP based on Wang, Balle, Kasiviswanathan (2019) and Mironov (2017).
   - Added `RDPAccountant`, `compute_step_rdp`, `compute_rdp`, `get_privacy_spent`, and `compute_rdp_epsilon` over Rényi orders $\alpha \in [2, 64]$.
   - Evaluated via numerically stable log-sum-exp to guarantee zero floating-point overflow.
   - Full integration with `compute_dp_sgd_step` and automated cumulative privacy telemetry reporting.

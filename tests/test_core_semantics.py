@@ -386,3 +386,102 @@ def test_multi_step_parameter_mutation():
     # After 3 steps of gradient descent on w^2 with lr=0.1, w should shrink towards 0
     assert np.all(np.abs(w.data) < np.array([[2.0, 1.0]]))
     assert np.all(w.grad == 0.0)
+
+
+# ── 6. Precision Numerical & Boundary Parity Verifications ─────────────
+
+def test_mixed_sign_zero_base_power():
+    """Verify mixed-sign tensor exponents with zero bases evaluate correctly elementwise."""
+    # Tensor([0, 2]) ** Tensor([2, -1]) -> exact [0.0, 0.5]
+    # In earlier versions, a global boolean is_negative erroneously substituted 0^2 with 1e-12^2 -> 1e-24.
+    base = Tensor([0, 2])
+    exp = Tensor([2, -1])
+    out = base ** exp
+    assert np.issubdtype(out.dtype, np.floating)
+    np.testing.assert_allclose(out.data, [0.0, 0.5], atol=1e-12)
+
+    # Autograd verification:
+    # d(x^2)/dx at x=0 is 2*x = 0.0
+    # d(x^-1)/dx at x=2 is -1/(x^2) = -0.25
+    base_grad = Tensor([0.0, 2.0], requires_grad=True)
+    exp_const = Tensor([2.0, -1.0])
+    out_grad = base_grad ** exp_const
+    out_grad.sum().backward()
+    np.testing.assert_allclose(base_grad.grad, [0.0, -0.25], atol=1e-7)
+
+
+def test_tensor_division_finite_difference():
+    """Verify numerical finite-difference gradient check vs autograd for broadcasted Tensor / Tensor."""
+    eps = 1e-5
+    np.random.seed(42)
+    a_val = np.random.uniform(1.0, 3.0, size=(2, 3)).astype(np.float64)
+    b_val = np.random.uniform(1.0, 3.0, size=(1, 3)).astype(np.float64)
+
+    a = Tensor(a_val, requires_grad=True)
+    b = Tensor(b_val, requires_grad=True)
+    out = (a / b).sum()
+    out.backward()
+
+    # Numerical grad for a: [f(a + eps) - f(a - eps)] / (2 * eps)
+    grad_a_num = np.zeros_like(a_val)
+    for idx in np.ndindex(a_val.shape):
+        a_pos = a_val.copy()
+        a_neg = a_val.copy()
+        a_pos[idx] += eps
+        a_neg[idx] -= eps
+        f_pos = (a_pos / b_val).sum()
+        f_neg = (a_neg / b_val).sum()
+        grad_a_num[idx] = (f_pos - f_neg) / (2 * eps)
+
+    # Numerical grad for b: [f(b + eps) - f(b - eps)] / (2 * eps)
+    grad_b_num = np.zeros_like(b_val)
+    for idx in np.ndindex(b_val.shape):
+        b_pos = b_val.copy()
+        b_neg = b_val.copy()
+        b_pos[idx] += eps
+        b_neg[idx] -= eps
+        f_pos = (a_val / b_pos).sum()
+        f_neg = (a_val / b_neg).sum()
+        grad_b_num[idx] = (f_pos - f_neg) / (2 * eps)
+
+    np.testing.assert_allclose(a.grad, grad_a_num, rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(b.grad, grad_b_num, rtol=1e-5, atol=1e-5)
+
+
+def test_tensor_power_finite_difference():
+    """Verify numerical finite-difference gradient check vs autograd for Tensor ** Tensor (base and exponent)."""
+    eps = 1e-5
+    np.random.seed(42)
+    a_val = np.random.uniform(1.5, 3.0, size=(2, 3)).astype(np.float64)
+    b_val = np.random.uniform(1.5, 3.0, size=(2, 3)).astype(np.float64)
+
+    a = Tensor(a_val, requires_grad=True)
+    b = Tensor(b_val, requires_grad=True)
+    out = (a ** b).sum()
+    out.backward()
+
+    # Numerical grad for base a
+    grad_a_num = np.zeros_like(a_val)
+    for idx in np.ndindex(a_val.shape):
+        a_pos = a_val.copy()
+        a_neg = a_val.copy()
+        a_pos[idx] += eps
+        a_neg[idx] -= eps
+        f_pos = (a_pos ** b_val).sum()
+        f_neg = (a_neg ** b_val).sum()
+        grad_a_num[idx] = (f_pos - f_neg) / (2 * eps)
+
+    # Numerical grad for exponent b: d(a^b)/db = a^b * ln(a)
+    grad_b_num = np.zeros_like(b_val)
+    for idx in np.ndindex(b_val.shape):
+        b_pos = b_val.copy()
+        b_neg = b_val.copy()
+        b_pos[idx] += eps
+        b_neg[idx] -= eps
+        f_pos = (a_val ** b_pos).sum()
+        f_neg = (a_val ** b_neg).sum()
+        grad_b_num[idx] = (f_pos - f_neg) / (2 * eps)
+
+    np.testing.assert_allclose(a.grad, grad_a_num, rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(b.grad, grad_b_num, rtol=1e-5, atol=1e-5)
+

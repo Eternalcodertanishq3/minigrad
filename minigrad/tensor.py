@@ -314,18 +314,19 @@ class Tensor:
             res_dtype = np.dtype(np.float64)
 
         self_data = self.data.astype(res_dtype) if self.data.dtype != res_dtype else self.data
-        other_arr = np.asarray(other_data).astype(res_dtype) if np.asarray(other_data).dtype != res_dtype else other_data
+        other_arr: np.ndarray = np.asarray(other_data, dtype=res_dtype)
 
-        # Numerical Stability Contract for Power Operations:
+        # Numerical Stability Contract for Power Operations (Contract B):
         # In neural network autodiff, 0 raised to negative powers (e.g. in inverse norms/distances)
         # would yield +/-inf derivatives, permanently corrupting downstream parameters.
         # miniGrad enforces an intentional autograd stability policy: zero bases with negative
         # exponents are evaluated with a 1e-12 epsilon safeguard to maintain finite gradient flow.
-        if is_negative:
-            safe_base = np.where(self_data == 0, 1e-12, self_data)
+        # Elementwise mask: ONLY replace zero when THAT specific element's exponent is negative.
+        negative_mask = other_arr < 0
+        zero_negative_mask = (self_data == 0) & negative_mask
+        safe_base = np.where(zero_negative_mask, 1e-12, self_data)
+        with np.errstate(divide="ignore", invalid="ignore"):
             out_data = safe_base ** other_arr
-        else:
-            out_data = self_data ** other_arr
 
         out = Tensor(
             out_data,
@@ -341,11 +342,11 @@ class Tensor:
             is_zero = (other == 0) if not isinstance(other, Tensor) else np.all(other.data == 0)
             if self.requires_grad:
                 if not is_zero:
-                    if is_negative:
-                        safe_data = np.where(self_data == 0, 1e-12, self_data)
+                    negative_mask = other_arr < 0
+                    zero_negative_mask = (self_data == 0) & negative_mask
+                    safe_data = np.where(zero_negative_mask, 1e-12, self_data)
+                    with np.errstate(divide="ignore", invalid="ignore"):
                         dx_val = (other_arr * (safe_data ** (other_arr - 1))) * out.grad
-                    else:
-                        dx_val = (other_arr * (self_data ** (other_arr - 1))) * out.grad
                     dx = Tensor._unbroadcast(dx_val, self.data.shape)
                     target_gtype = Tensor._grad_dtype(self.dtype)
                     if isinstance(dx, np.ndarray) and dx.dtype != target_gtype:

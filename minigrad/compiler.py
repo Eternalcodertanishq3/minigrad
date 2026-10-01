@@ -129,18 +129,24 @@ static inline void minigrad_matmul_2d_tiled(const float* A, const float* B, floa
     }
 }""",
 
-    "attention_kv_cache": """static inline void minigrad_attention_kv_cache(
+    "attention_kv_cache": """static inline int minigrad_attention_kv_cache(
     const float* q_new,
     const float* k_new,
     const float* v_new,
     float* k_cache,
     float* v_cache,
+    float* scores,
     float* out,
     int step,
     int max_seq_len,
     int n_heads,
     int d_k
 ) {
+    /* Bounds and capacity guard: prevent any buffer overruns past max_seq_len */
+    if (step < 0 || step >= max_seq_len) {
+        return -1;
+    }
+
     float scale = 1.0f / sqrtf((float)d_k);
     for (int h = 0; h < n_heads; h++) {
         const float* q_h = q_new + h * d_k;
@@ -156,7 +162,6 @@ static inline void minigrad_matmul_2d_tiled(const float* A, const float* B, floa
 
         /* Calculate dot product attention scores across all cached tokens */
         int seq_len = step + 1;
-        float scores[512];
         float max_score = -1e30f;
         for (int t = 0; t < seq_len; t++) {
             float dot = 0.0f;
@@ -191,6 +196,7 @@ static inline void minigrad_matmul_2d_tiled(const float* A, const float* B, floa
             }
         }
     }
+    return 0;
 }""",
 
     "add": """static inline void minigrad_add(const float* A, const float* B, float* out, int size) {
@@ -239,7 +245,7 @@ static inline void minigrad_matmul_2d_tiled(const float* A, const float* B, floa
 
     "div": """static inline void minigrad_div(const float* A, const float* B, float* out, int size) {
     for (int i = 0; i < size; i++) {
-        out[i] = A[i] / (B[i] != 0.0f ? B[i] : 1e-12f);
+        out[i] = A[i] / B[i];
     }
 }""",
 
@@ -676,7 +682,7 @@ class CCompiler:
                     )
 
             elif op == "div":
-                if in1_node and in1_node.data.size == 1:
+                if in1_node and in1_node.data.size == 1 and float(in1_node.data.flat[0]) != 0.0:
                     self.used_kernels.add("mul_scalar")
                     inv_s = 1.0 / float(in1_node.data.flat[0])
                     self.c_instructions.append(
@@ -954,23 +960,32 @@ class CCompiler:
                 "/* === Static Key-Value Cache State ==================================== */",
                 f"static float {self.model_name}_k_cache[{kv_size}];",
                 f"static float {self.model_name}_v_cache[{kv_size}];",
+                f"static float {self.model_name}_scores[{self.model_name.upper()}_MAX_SEQ_LEN];",
                 f"static int {self.model_name}_kv_step = 0;",
                 "",
                 f"void {self.model_name}_reset_kv_cache(void) {{",
                 f"    {self.model_name}_kv_step = 0;",
                 f"    memset({self.model_name}_k_cache, 0, sizeof({self.model_name}_k_cache));",
                 f"    memset({self.model_name}_v_cache, 0, sizeof({self.model_name}_v_cache));",
+                f"    memset({self.model_name}_scores, 0, sizeof({self.model_name}_scores));",
                 "}",
                 "",
                 f"int {self.model_name}_get_kv_step(void) {{",
                 f"    return {self.model_name}_kv_step;",
                 "}",
                 "",
-                f"void {self.model_name}_attention_step(const float* q_new, const float* k_new, const float* v_new, float* out) {{",
-                f"    minigrad_attention_kv_cache(q_new, k_new, v_new, {self.model_name}_k_cache, {self.model_name}_v_cache, out,",
+                f"int {self.model_name}_attention_step(const float* q_new, const float* k_new, const float* v_new, float* out) {{",
+                f"    if ({self.model_name}_kv_step >= {self.model_name.upper()}_MAX_SEQ_LEN) {{",
+                "        return -1; /* Cache capacity reached; cannot append past MAX_SEQ_LEN */",
+                "    }",
+                f"    int status = minigrad_attention_kv_cache(q_new, k_new, v_new, {self.model_name}_k_cache, {self.model_name}_v_cache,",
+                f"                                {self.model_name}_scores, out,",
                 f"                                {self.model_name}_kv_step, {self.model_name.upper()}_MAX_SEQ_LEN,",
                 f"                                {self.model_name.upper()}_N_HEADS, {self.model_name.upper()}_D_K);",
-                f"    {self.model_name}_kv_step++;",
+                "    if (status == 0) {",
+                f"        {self.model_name}_kv_step++;",
+                "    }",
+                "    return status;",
                 "}",
                 "",
             ])
@@ -1150,7 +1165,7 @@ class CCompiler:
                 "",
                 f"void {self.model_name}_reset_kv_cache(void);",
                 f"int {self.model_name}_get_kv_step(void);",
-                f"void {self.model_name}_attention_step(const float* q_new, const float* k_new, const float* v_new, float* out);",
+                f"int {self.model_name}_attention_step(const float* q_new, const float* k_new, const float* v_new, float* out);",
             ])
 
         header_lines.extend([
@@ -1199,6 +1214,9 @@ def export_c(
     tiling: bool = False,
     openmp: bool = False,
     kv_cache: bool = False,
+    max_seq_len: int = 128,
+    n_heads: int = 4,
+    d_k: int = 32,
 ) -> str:
     """
     Compile a miniGrad model or computational graph into a single standalone ANSI C file.
@@ -1218,6 +1236,9 @@ def export_c(
         tiling=tiling,
         openmp=openmp,
         kv_cache=kv_cache,
+        max_seq_len=max_seq_len,
+        n_heads=n_heads,
+        d_k=d_k,
     )
     if filename is not None:
         bin_path = weights_filename if weights_filename else Path(filename).with_suffix(".bin")
@@ -1242,6 +1263,9 @@ def to_c(
     tiling: bool = False,
     openmp: bool = False,
     kv_cache: bool = False,
+    max_seq_len: int = 128,
+    n_heads: int = 4,
+    d_k: int = 32,
 ) -> str:
     """Alias for export_c()."""
     return export_c(
@@ -1258,6 +1282,9 @@ def to_c(
         tiling=tiling,
         openmp=openmp,
         kv_cache=kv_cache,
+        max_seq_len=max_seq_len,
+        n_heads=n_heads,
+        d_k=d_k,
     )
 
 
@@ -1273,6 +1300,9 @@ def compile_to_library(
     tiling: bool = False,
     openmp: bool = False,
     kv_cache: bool = False,
+    max_seq_len: int = 128,
+    n_heads: int = 4,
+    d_k: int = 32,
 ) -> Tuple[Path, Path]:
     """
     Export a miniGrad model as a clean C library (model.h and model.c).
@@ -1289,5 +1319,8 @@ def compile_to_library(
         tiling=tiling,
         openmp=openmp,
         kv_cache=kv_cache,
+        max_seq_len=max_seq_len,
+        n_heads=n_heads,
+        d_k=d_k,
     )
     return compiler.compile_to_library(output_dir)
