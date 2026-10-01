@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/Eternalcodertanishq3/minigrad/actions/workflows/ci.yml/badge.svg)](https://github.com/Eternalcodertanishq3/minigrad/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/minigrad-framework.svg?color=blue)](https://pypi.org/project/minigrad-framework/)
-[![Tests](https://img.shields.io/badge/tests-371%20collected%20%7C%20333%20zero--dep-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-479%20collected%20%7C%20441%20zero--dep-brightgreen.svg)](tests/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-pure%20numpy-red.svg)](pyproject.toml)
@@ -84,7 +84,7 @@ miniGrad maintains explicit maturity boundaries between verified production-grad
 | Capability / Metric | `miniGrad` | `PyTorch` | `micrograd` / `tinygrad` |
 | :--- | :---: | :---: | :---: |
 | **Dependencies** | **Zero (Pure NumPy)** | ~2.5 GB C++/CUDA binaries | Pure Python / minimal C |
-| **Full Test Suite Speed** | **371 tests collected (333 zero-dep CI + 38 parity) in ~35s** | Minutes / Hours | Few dozen tests |
+| **Full Test Suite Speed** | **479 tests collected (441 zero-dep CI + 38 parity) in ~20s** | Minutes / Hours | Few dozen tests |
 | **Glass-Box Root-Cause NaN Debugger** | **Native Built-in** | `detect_anomaly` (slow) | ❌ None |
 | **Zero-Runtime C Code Generator** | **Native (`export_c`)** | TorchScript / ExecuTorch | TinyGrad has C-gen |
 | **Symbolic Graph Optimization & Fusion** | **Native Built-in** | TorchDynamo / Inductor | TinyGrad has fusion |
@@ -352,11 +352,11 @@ python examples/16_spanda_neuromorphic_snn.py       # S.P.A.N.D.A. Neuromorphic 
 
 ## 🧪 Verification & Testing
 
-miniGrad enforces rigorous mathematical and regression testing across 371 collected test cases, differential suites, and static typing:
-* **371 tests collected**: **333 tests** pass natively in pure-NumPy with zero external dependencies (the default CI environment), and **38 optional cross-framework parity tests** execute and pass in the `test-full-parity` CI matrix when PyTorch and Hugging Face Transformers are installed (in the full development environment with optional frameworks installed, **371 / 371 pass**).
+miniGrad enforces rigorous mathematical and regression testing across 479 collected test cases, differential suites, and static typing:
+* **479 tests collected**: **441 tests** pass natively in pure-NumPy with zero external dependencies (the default CI environment), and **38 optional cross-framework parity tests** execute and pass in the `test-full-parity` CI matrix when PyTorch and Hugging Face Transformers are installed (in the full development environment with optional frameworks installed, **479 / 479 pass**).
 
 ```bash
-# Run complete test suite (371 tests across contracts, lifecycles, random DAGs, compiler benchmarks)
+# Run complete test suite (479 tests across contracts, lifecycles, random DAGs, compiler benchmarks)
 python -m pytest
 
 # Run strict static type checking (0 errors across 70 source files)

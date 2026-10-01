@@ -2,13 +2,17 @@
 tests/test_core_semantics.py — Exhaustive Dtype Promotion, IEEE-754 Boundaries, and Lifecycle Invariants.
 
 Validates:
-1. Dtype Promotion Matrix:
-   - Full pairwise matrix of float32, float64, int32, int64, and Python scalars.
-   - Verified across binary ops (+, -, *, /, @, **).
+1. Dtype Promotion & Operator Matrices:
+   - Full pairwise matrix of float32, float64, int32, int64 across binary ops (+, -, *, /).
+   - Exhaustive pairwise tensor-vs-tensor power matrix (16 pairs) for (a ** b) with positive & negative exponents.
+   - Exhaustive pairwise matrix multiplication matrix (16 pairs) for (x @ w) with gradient tracking.
+   - Comprehensive division gradient verification on both operands with broadcasting topologies.
+   - Division with left and right Python float/int scalars.
    - Exact parity with NumPy dtype promotion semantics.
 2. IEEE-754 Boundary & Edge-Case Behavior:
-   - Exact mathematical limits: log(0) -> -inf, log(-x) -> nan, 0/0 -> nan, 1/0 -> inf, 0^0 -> 1.
-   - Glass-Box anomaly interception halts at the exact exploding node.
+   - Exact mathematical limits: log(0) -> -inf, log(-x) -> nan, 0/0 -> nan, 1/0 -> inf, 0^0 -> 1, 0^-1 -> inf, 0^-2 -> inf, (-2)^0.5 -> nan.
+   - Mixed-sign tensor exponents ([2, 3] ** [2, -1]).
+   - Glass-Box anomaly interception halts at the exact exploding node on non-finite outputs and gradients.
 3. Autograd Lifecycle & Multi-Branch Graph Stress:
    - Diamond and multi-consumer graph backward accumulation.
    - RuntimeError on backward through FREED graph when retain_graph=False.
@@ -59,8 +63,8 @@ def test_dtype_promotion_binary_ops(dtype1, dtype2):
 
 
 @pytest.mark.parametrize("dtype", [np.float32, np.float64, np.int32, np.int64])
-def test_dtype_promotion_power(dtype):
-    """Power operations with positive and negative exponents follow normalized promotion."""
+def test_dtype_promotion_power_scalar(dtype):
+    """Power operations with scalar exponents follow normalized promotion."""
     a_arr = np.array([2, 4], dtype=dtype)
     a = Tensor(a_arr)
 
@@ -75,6 +79,29 @@ def test_dtype_promotion_power(dtype):
     expected_float_dtype = np.float32 if dtype == np.float32 else np.float64
     assert c_pow_neg.dtype == expected_float_dtype
     np.testing.assert_allclose(c_pow_neg.data, a_arr.astype(expected_float_dtype) ** -1)
+
+
+@pytest.mark.parametrize("dtype1", [np.float32, np.float64, np.int32, np.int64])
+@pytest.mark.parametrize("dtype2", [np.float32, np.float64, np.int32, np.int64])
+def test_dtype_promotion_tensor_power_matrix(dtype1, dtype2):
+    """Exhaustive 16-pair tensor-vs-tensor power promotion matrix (a ** b)."""
+    # Non-negative exponents
+    a = Tensor(np.array([2, 3], dtype=dtype1))
+    b = Tensor(np.array([3, 2], dtype=dtype2))
+    c = a ** b
+    expected_dtype = np.result_type(a.data, b.data)
+    assert c.dtype == expected_dtype, f"Pow dtype mismatch: {c.dtype} vs {expected_dtype}"
+    np.testing.assert_allclose(c.data, a.data ** b.data)
+
+    # Negative exponents (guarantees float promotion for integer bases)
+    b_neg = Tensor(np.array([2, -1], dtype=dtype2))
+    c_neg = a ** b_neg
+    if np.issubdtype(dtype1, np.floating) or np.issubdtype(dtype2, np.floating):
+        expected_neg_dtype = np.result_type(dtype1, dtype2)
+    else:
+        expected_neg_dtype = np.float64
+    assert c_neg.dtype == expected_neg_dtype, f"Neg pow dtype mismatch: {c_neg.dtype} vs {expected_neg_dtype}"
+    np.testing.assert_allclose(c_neg.data, a.data.astype(c_neg.dtype) ** b_neg.data)
 
 
 @pytest.mark.parametrize("tensor_dtype", [np.float32, np.float64, np.int32, np.int64])
@@ -113,14 +140,113 @@ def test_dtype_promotion_with_python_scalars(tensor_dtype, scalar_val):
     np.testing.assert_allclose(out_rdiv.data, expected_rdiv)
 
 
-def test_matmul_dtype_promotion():
-    """Matrix multiplication promotes dtypes identically to NumPy."""
-    x = Tensor(np.ones((2, 3), dtype=np.float32))
-    w = Tensor(np.ones((3, 4), dtype=np.float64))
+@pytest.mark.parametrize("dtype1", [np.float32, np.float64, np.int32, np.int64])
+@pytest.mark.parametrize("dtype2", [np.float32, np.float64, np.int32, np.int64])
+def test_matmul_dtype_promotion_exhaustive_matrix(dtype1, dtype2):
+    """Exhaustive 16-pair tensor matrix multiplication (x @ w) dtype promotion and autograd."""
+    x_arr = np.array([[1, 2], [3, 4]], dtype=dtype1)
+    w_arr = np.array([[5, 6], [7, 8]], dtype=dtype2)
+    expected_dtype = np.result_type(x_arr, w_arr)
+
+    # Forward check
+    x = Tensor(x_arr)
+    w = Tensor(w_arr)
     out = x @ w
-    assert out.dtype == np.float64
-    assert out.shape == (2, 4)
-    np.testing.assert_allclose(out.data, np.full((2, 4), 3.0))
+    assert out.dtype == expected_dtype, f"Matmul dtype mismatch: {out.dtype} vs {expected_dtype}"
+    assert out.shape == (2, 2)
+    np.testing.assert_allclose(out.data, x_arr @ w_arr)
+
+    # Autograd verification
+    x_grad = Tensor(x_arr, dtype=dtype1, requires_grad=True)
+    w_grad = Tensor(w_arr, dtype=dtype2, requires_grad=True)
+    loss = (x_grad @ w_grad).sum()
+    loss.backward()
+
+    expected_dx = np.ones((2, 2), dtype=expected_dtype) @ w_arr.T
+    expected_dw = x_arr.T @ np.ones((2, 2), dtype=expected_dtype)
+
+    np.testing.assert_allclose(x_grad.grad, expected_dx, rtol=1e-4, atol=1e-4)
+    np.testing.assert_allclose(w_grad.grad, expected_dw, rtol=1e-4, atol=1e-4)
+    assert np.issubdtype(x_grad.grad.dtype, np.floating)
+    assert np.issubdtype(w_grad.grad.dtype, np.floating)
+
+
+@pytest.mark.parametrize("dtype1", [np.float32, np.float64, np.int32, np.int64])
+@pytest.mark.parametrize("dtype2", [np.float32, np.float64, np.int32, np.int64])
+@pytest.mark.parametrize("broadcast_case", [
+    "identical",       # (2, 3) / (2, 3)
+    "broadcast_rows",  # (2, 3) / (1, 3)
+    "broadcast_cols",  # (2, 3) / (2, 1)
+    "broadcast_1d",    # (2, 3) / (3,)
+])
+def test_division_tensor_tensor_gradients_and_broadcasting(dtype1, dtype2, broadcast_case):
+    """Division (a / b) with gradients on both operands across all dtypes and broadcast topologies."""
+    base_a = np.array([[12.0, 18.0, 24.0], [30.0, 36.0, 42.0]], dtype=np.float64)
+
+    if broadcast_case == "identical":
+        base_b = np.array([[2.0, 3.0, 4.0], [5.0, 6.0, 7.0]], dtype=np.float64)
+    elif broadcast_case == "broadcast_rows":
+        base_b = np.array([[2.0, 3.0, 4.0]], dtype=np.float64)
+    elif broadcast_case == "broadcast_cols":
+        base_b = np.array([[2.0], [3.0]], dtype=np.float64)
+    elif broadcast_case == "broadcast_1d":
+        base_b = np.array([2.0, 3.0, 4.0], dtype=np.float64)
+    else:
+        raise ValueError(f"Unknown broadcast case: {broadcast_case}")
+
+    a_arr = base_a.astype(dtype1)
+    b_arr = base_b.astype(dtype2)
+
+    a = Tensor(a_arr, dtype=dtype1, requires_grad=True)
+    b = Tensor(b_arr, dtype=dtype2, requires_grad=True)
+
+    out = a / b
+    loss = out.sum()
+    loss.backward()
+
+    # Analytical unbroadcasted gradients
+    float_a = base_a
+    float_b = base_b
+    grad_out = np.ones_like(float_a / float_b)
+
+    raw_da = (1.0 / float_b) * grad_out
+    raw_db = (-float_a / (float_b ** 2)) * grad_out
+
+    expected_da = Tensor._unbroadcast(raw_da, a_arr.shape)
+    expected_db = Tensor._unbroadcast(raw_db, b_arr.shape)
+
+    np.testing.assert_allclose(a.grad, expected_da, rtol=1e-4, atol=1e-4)
+    np.testing.assert_allclose(b.grad, expected_db, rtol=1e-4, atol=1e-4)
+    assert np.issubdtype(a.grad.dtype, np.floating)
+    assert np.issubdtype(b.grad.dtype, np.floating)
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.float64, np.int32, np.int64])
+@pytest.mark.parametrize("scalar", [2.5, -4.0, 5])
+def test_division_scalar_operands_gradients(dtype, scalar):
+    """Division with scalar operands on both left and right sides preserves exact gradients."""
+    a_arr = np.array([12, 24, 36], dtype=dtype)
+
+    # Tensor / scalar
+    a = Tensor(a_arr, dtype=dtype, requires_grad=True)
+    out1 = a / scalar
+    loss1 = out1.sum()
+    loss1.backward()
+
+    expected_da = np.ones_like(a_arr, dtype=np.float64) * (1.0 / scalar)
+    np.testing.assert_allclose(a.grad, expected_da, rtol=1e-4, atol=1e-4)
+    assert np.issubdtype(a.grad.dtype, np.floating)
+
+    # scalar / Tensor
+    b_arr = np.array([2, 4, 6], dtype=dtype)
+    b = Tensor(b_arr, dtype=dtype, requires_grad=True)
+    out2 = scalar / b
+    loss2 = out2.sum()
+    loss2.backward()
+
+    expected_db = -scalar / (b_arr.astype(np.float64) ** 2)
+    np.testing.assert_allclose(b.grad, expected_db, rtol=1e-4, atol=1e-4)
+    assert np.issubdtype(b.grad.dtype, np.floating)
 
 
 # ── 2. IEEE-754 Boundary Behavior ─────────────────────────────────────
@@ -151,6 +277,40 @@ def test_ieee754_pow_boundaries():
     x_two = Tensor([2.0])
     out_pow3 = x_two ** 3
     assert out_pow3.data[0] == 8.0
+
+    # (-2)^0.5 -> NaN (fractional exponent on negative base in real domain)
+    x_neg = Tensor([-2.0])
+    with np.errstate(invalid="ignore"):
+        out_fractional_neg = x_neg ** 0.5
+    assert np.isnan(out_fractional_neg.data[0])
+
+    # Mixed-sign tensor exponents: [2, 3] ** [2, -1] -> [4.0, 1/3]
+    base = Tensor([2, 3])
+    exp = Tensor([2, -1])
+    out_mixed = base ** exp
+    assert np.issubdtype(out_mixed.dtype, np.floating)
+    np.testing.assert_allclose(out_mixed.data, [4.0, 1.0 / 3.0])
+
+
+def test_zero_negative_power_autograd_stability_policy():
+    """0 raised to negative powers adheres to Contract B: Autograd Numerical Stability Policy."""
+    # 0^-1 evaluated under Contract B produces finite 1e12 approximation
+    x_zero = Tensor([0.0])
+    out_pow_neg1 = x_zero ** -1
+    assert np.allclose(out_pow_neg1.data, [1e12])
+    assert not np.any(np.isinf(out_pow_neg1.data))
+
+    # 0^-2 evaluated under Contract B produces finite 1e24 approximation
+    out_pow_neg2 = x_zero ** -2
+    assert np.allclose(out_pow_neg2.data, [1e24])
+    assert not np.any(np.isinf(out_pow_neg2.data))
+
+    # Backward pass preserves finite continuous gradients, preventing parameter corruption
+    x_zero_grad = Tensor([0.0], requires_grad=True)
+    y = x_zero_grad ** -2
+    y.backward()
+    assert not np.isnan(x_zero_grad.grad[0])
+    assert not np.isinf(x_zero_grad.grad[0])
 
 
 def test_glassbox_catches_non_finite_explosion():

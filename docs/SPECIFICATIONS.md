@@ -164,3 +164,22 @@ Backpropagation Through Time (BPTT) employs continuous surrogate gradients to by
 
 ### 5.5 Limitations & Non-Goals
 - Executes as a discrete-time software simulator on general-purpose CPUs; does not directly interface with physical asynchronous analog neuromorphic silicon (e.g. Intel Loihi, SynSense Dynap-CNN).
+
+---
+
+## 6. Core Numerical Contracts & Stability Policies
+**Module:** `minigrad/tensor.py`, `minigrad/graph_opt.py`, `minigrad/contracts.py`
+
+### 6.1 Contract A: Optimizer Algebraic Real Domain Invariance
+- **Statement:** Graph optimizations, constant foldings, and algebraic rewrite rules (e.g., $x \cdot 0 \to 0$, $x - x \to 0$, $\ln(\exp(x)) \to x$) assume finite real values ($x \in \mathbb{R}$) within the supported numerical domain.
+- **Boundary:** Non-finite inputs ($\pm\infty, \text{NaN}$) adhere to IEEE-754 semantics through unoptimized execution paths and are intercepted by Glass-Box anomaly detection (`detect_anomaly()`).
+
+### 6.2 Contract B: Zero-Base Negative Power Autograd Stability Policy
+- **Statement:** In neural network autodiff, evaluating $0^p$ for negative exponents $p < 0$ (e.g., inverse Euclidean distances, normalization epsilons) produces infinite output and gradient singularities ($\pm\infty$) that permanently corrupt downstream model weights.
+- **Policy Implementation:** `Tensor.__pow__` and `Tensor.__rpow__` implement an explicit stability policy: zero bases with negative exponents are evaluated with an epsilon substitution ($10^{-12}$) during both forward and backward passes.
+- **Invariant:** Backward propagation produces finite, continuous gradients avoiding parameter poisoning, while fractional powers on negative bases ($(-x)^{0.5}$) adhere to native IEEE-754 $\text{NaN}$ semantics.
+
+### 6.3 Contract C: Continuous Rate Gradient Dtype Invariant
+- **Statement:** Gradients represent continuous differential rates of change ($\frac{\partial \mathcal{L}}{\partial x}$).
+- **Invariant:** Gradients are strictly floating-point arrays (`float32` for `float32` tensors, `float64` for `float64` and integer-typed tensors). Gradients are never cast or truncated to integer dtypes, preserving exact non-integer rates of change across all mixed-dtype operations.
+

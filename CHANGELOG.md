@@ -18,14 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Negative Exponent Float Promotion & Safe Base (`minigrad/tensor.py`):**
   - Guaranteed float promotion for integer bases raised to negative exponents in `Tensor.__pow__` and `__rpow__`.
   - Preserved numerical stability with zero-base epsilon substitution (`safe_base`) to prevent division by zero or invalid operations.
-- **Exhaustive Binary Op Dtype Promotion Test Matrix (`tests/test_core_semantics.py`):**
-  - Expanded test coverage across all 16 pairwise combinations of `float32`, `float64`, `int32`, `int64` and scalar types for `+`, `-`, `*`, `/`, and `**`.
-- **Subsampled-Gaussian RDP Upper-Bound Specifications (`minigrad/dp.py`, `docs/SPECIFICATIONS.md`):**
-  - Calibrated Differential Privacy documentation to specify exact analytical upper-bound Rényi Differential Privacy (Wang et al., 2019) with documented Poisson subsampling assumptions.
-  - Refined benchmark and empirical claims in specifications to reflect observed validation results.
-- **Full Parity CI Automation (`.github/workflows/ci.yml`):**
+- **Exhaustive Tensor Binary Op & Matmul Dtype Matrices (`tests/test_core_semantics.py`):**
+  - Expanded test coverage across all 16 pairwise combinations of `float32`, `float64`, `int32`, `int64` for binary operators (`+`, `-`, `*`, `/`), tensor-vs-tensor exponentiation (`a ** b`), and tensor matrix multiplication (`x @ w`) with gradient validation.
+  - Added comprehensive division gradient tests across all 16 dtype pairs covering 4 broadcast topologies (`identical`, `broadcast_rows`, `broadcast_cols`, `broadcast_1d`), verifying analytical quotient gradients on both operands.
+  - Added Contract C: Continuous Rate Gradient Dtype Invariant, guaranteeing gradients are strictly floating-point (`float32` or `float64`) and never truncated to integer dtypes.
+- **Formalized Core Numerical Contracts (`docs/SPECIFICATIONS.md`, `minigrad/tensor.py`):**
+  - Documented Contract A (Optimizer Algebraic Real Domain Invariance), Contract B (Zero-Base Negative Power Autograd Stability Policy with $10^{-12}$ epsilon safeguard for parameter continuity), and Contract C (Continuous Rate Gradient Dtype Invariant).
+  - Explicitly tested zero-base negative power stability (`0^-1`, `0^-2`), fractional powers on negative bases ($(-x)^{0.5} \to \text{NaN}$), and mixed-sign tensor exponents.
+- **Full Parity CI Automation & Suite Expansion:**
+  - Expanded test suite from 371 to **479 tests** (441 zero-dep CI + 38 optional cross-framework parity tests, 100% passing).
   - Added `test-full-parity` GitHub Actions workflow matrix job with PyTorch and Hugging Face Transformers installed.
-  - Guarantees automated execution and verification of all 371 tests across the suite without skipping optional cross-framework parity tests.
 
 ---
 
