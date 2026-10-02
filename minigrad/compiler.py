@@ -389,7 +389,7 @@ class CCompiler:
     - INT8 post-training quantization (saving 75% memory)
     - Liveness-based activation memory arena (saving 80-95% RAM)
     - Cache tiling & OpenMP multi-core parallelism
-    - Static KV-Cache for streaming autoregressive transformers
+    - Static KV-Cache for streaming autoregressive transformers (stateful, non-reentrant embedded runtime)
     - Clean library export (model.h and model.c)
     """
 
@@ -958,6 +958,9 @@ class CCompiler:
             kv_size = self.max_seq_len * self.n_heads * self.d_k
             lines.extend([
                 "/* === Static Key-Value Cache State ==================================== */",
+                "/* Concurrency Note: Stateful & Non-Reentrant. Intended for single-threaded */",
+                "/* embedded streaming inference. Multiple concurrent callers require external */",
+                "/* synchronization or separate compiled model instances.                    */",
                 f"static float {self.model_name}_k_cache[{kv_size}];",
                 f"static float {self.model_name}_v_cache[{kv_size}];",
                 f"static float {self.model_name}_scores[{self.model_name.upper()}_MAX_SEQ_LEN];",
@@ -1163,6 +1166,7 @@ class CCompiler:
         if self.kv_cache:
             header_lines.extend([
                 "",
+                "/* Key-Value Cache Streaming (Stateful & Non-Reentrant: single-threaded embedded use) */",
                 f"void {self.model_name}_reset_kv_cache(void);",
                 f"int {self.model_name}_get_kv_step(void);",
                 f"int {self.model_name}_attention_step(const float* q_new, const float* k_new, const float* v_new, float* out);",

@@ -10,7 +10,7 @@ Validates:
    - Division with left and right Python float/int scalars.
    - Exact parity with NumPy dtype promotion semantics.
 2. IEEE-754 Boundary & Edge-Case Behavior:
-   - Exact mathematical limits: log(0) -> -inf, log(-x) -> nan, 0/0 -> nan, 1/0 -> inf, 0^0 -> 1, 0^-1 -> inf, 0^-2 -> inf, (-2)^0.5 -> nan.
+   - Exact mathematical limits: log(0) -> -inf, log(-x) -> nan, 0/0 -> nan, 1/0 -> inf, 0^0 -> 1, (-2)^0.5 -> nan; 0^-1 and 0^-2 evaluate to finite values under Contract B stability policy.
    - Mixed-sign tensor exponents ([2, 3] ** [2, -1]).
    - Glass-Box anomaly interception halts at the exact exploding node on non-finite outputs and gradients.
 3. Autograd Lifecycle & Multi-Branch Graph Stress:

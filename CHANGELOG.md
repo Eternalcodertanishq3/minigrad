@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.3] - 2026-10-02
+
+### 🛡️ Hardened & Verified
+- **Core Semantics Docstring Alignment (`tests/test_core_semantics.py`):**
+  - Updated module-level docstring to clarify that `0^-1` and `0^-2` evaluate to finite values under Contract B (Autograd Numerical Stability Policy with $10^{-12}$ safeguard), aligning documentation with verified autograd stability invariants.
+- **KV-Cache Reentrancy & Concurrency Lifecycle (`minigrad/compiler.py`):**
+  - Explicitly documented the stateful and non-reentrant lifecycle of generated C KV-cache scratch memory in both generated C code and Python compiler docstrings.
+  - Clarified that zero-dynamic-allocation embedded streaming attention requires external synchronization if called across concurrent threads.
+- **Scientific Parity Wording Calibration (`CHANGELOG.md`):**
+  - Calibrated C compiler floating-point division description to "IEEE-754-style semantic parity verified on the CI compiler".
+
+---
+
 ## [1.3.2] - 2026-10-01
 
 ### 🛡️ Hardened & Verified
@@ -18,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Replaced stack-allocated `float scores[512]` with static model-level buffer `static float {model}_scores[MAX_SEQ_LEN]`, eliminating VLA/stack overflow limitations and maintaining zero dynamic allocation.
   - Updated attention step function to return integer status codes (`0` on success, `-1` on boundary overflow).
 - **C99 IEEE-754 Division Semantics Parity (`minigrad/compiler.py`):**
-  - Aligned C compiler `minigrad_div` kernel to native IEEE-754 division `out[i] = A[i] / B[i];`, establishing bit-exact semantic parity with Python miniGrad (`1.0 / 0.0 -> +inf`, `-1.0 / 0.0 -> -inf`, `0.0 / 0.0 -> nan`).
+  - Aligned C compiler `minigrad_div` kernel to native IEEE-754 division `out[i] = A[i] / B[i];`, establishing IEEE-754-style semantic parity verified on the CI compiler (`1.0 / 0.0 -> +inf`, `-1.0 / 0.0 -> -inf`, `0.0 / 0.0 -> nan`).
 - **Comprehensive Parity CI & Differential Testing:**
   - Expanded test suite to **483 tests** (445 zero-dependency tests + 38 optional cross-framework parity tests, 100% passing).
   - Added finite-difference gradient checks for broadcasted `Tensor / Tensor` and `Tensor ** Tensor` vs autograd.
