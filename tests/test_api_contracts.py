@@ -20,6 +20,8 @@ Validates:
    - Metadata preservation
 5. Single Source of Truth for Versioning:
    - minigrad.__version__ matches setup.py
+6. Compiler Parameter Contract Validations:
+   - Positive integer assertions on max_seq_len, n_heads, and d_k
 """
 from __future__ import annotations
 
@@ -27,8 +29,10 @@ import re
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 import minigrad
+from minigrad.compiler import CCompiler, export_c
 from minigrad.data import DataLoader, Dataset
 from minigrad.nn import BatchNorm1D, Dropout, Linear, Sequential
 from minigrad.safetensors import load_file, save_file
@@ -260,3 +264,32 @@ def test_single_source_of_truth_version():
     toml_match = re.search(r'^version\s*=\s*["\']([^"\']+)["\']', pyproject_file.read_text(encoding="utf-8"), re.M)
     assert toml_match is not None
     assert toml_match.group(1) == expected_version
+
+
+# ── 6. Compiler Parameter Contract Validations ───────────────────────
+
+def test_compiler_kv_dimension_validation():
+    """CCompiler and export_c reject non-positive or non-integral KV-cache dimensions."""
+    x = Tensor([1.0, 2.0])
+
+    # max_seq_len validation
+    for bad_val in [0, -5, 12.5, "128", None, True, False]:
+        with pytest.raises(ValueError, match="max_seq_len must be a positive integer"):
+            CCompiler(x, max_seq_len=bad_val)  # type: ignore[arg-type]
+        with pytest.raises(ValueError, match="max_seq_len must be a positive integer"):
+            export_c(x, max_seq_len=bad_val)  # type: ignore[arg-type]
+
+    # n_heads validation
+    for bad_val in [0, -1, 4.5, "4", None, True, False]:
+        with pytest.raises(ValueError, match="n_heads must be a positive integer"):
+            CCompiler(x, n_heads=bad_val)  # type: ignore[arg-type]
+        with pytest.raises(ValueError, match="n_heads must be a positive integer"):
+            export_c(x, n_heads=bad_val)  # type: ignore[arg-type]
+
+    # d_k validation
+    for bad_val in [0, -32, 32.5, "32", None, True, False]:
+        with pytest.raises(ValueError, match="d_k must be a positive integer"):
+            CCompiler(x, d_k=bad_val)  # type: ignore[arg-type]
+        with pytest.raises(ValueError, match="d_k must be a positive integer"):
+            export_c(x, d_k=bad_val)  # type: ignore[arg-type]
+

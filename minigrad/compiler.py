@@ -425,6 +425,13 @@ class CCompiler:
         self.n_heads = n_heads
         self.d_k = d_k
 
+        if type(max_seq_len) is not int or max_seq_len <= 0:
+            raise ValueError(f"max_seq_len must be a positive integer, got {max_seq_len}")
+        if type(n_heads) is not int or n_heads <= 0:
+            raise ValueError(f"n_heads must be a positive integer, got {n_heads}")
+        if type(d_k) is not int or d_k <= 0:
+            raise ValueError(f"d_k must be a positive integer, got {d_k}")
+
         if self.quantize and self.quantize != "int8":
             raise ValueError(f"Unsupported quantization mode '{self.quantize}'. Expected 'int8' or None.")
 

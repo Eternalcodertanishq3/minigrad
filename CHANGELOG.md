@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.4] - 2026-10-02
+
+### 🛡️ Hardened & Verified
+- **Compiler Parameter Contract & Dimension Validation (`minigrad/compiler.py`, `tests/test_api_contracts.py`):**
+  - Added strict positive integer validation for KV-cache streaming dimensions (`max_seq_len`, `n_heads`, `d_k`), preventing non-positive (`<= 0`) or non-integral values from generating invalid or zero-length static C memory buffers (`model_k_cache`, `model_v_cache`, `model_scores`).
+  - Added comprehensive parameter contract tests covering zero, negative, floating-point, boolean, string, and None values across `CCompiler` and `export_c`.
+- **Test Suite Expansion:**
+  - Expanded test collection to **484 tests** (446 pure-NumPy zero-dependency CI + 38 cross-framework parity tests, 100% passing).
+
+---
+
 ## [1.3.3] - 2026-10-02
 
 ### 🛡️ Hardened & Verified
