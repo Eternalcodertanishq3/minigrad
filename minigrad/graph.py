@@ -7,7 +7,7 @@ cycle detection for the dynamic computation graph built by Tensor operations.
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Set, Tuple
 
 from minigrad.tensor import Tensor
 
@@ -15,24 +15,30 @@ from minigrad.tensor import Tensor
 def topological_sort(root: Tensor) -> List[Tensor]:
     """
     Return a topologically sorted list of all tensors in the computation graph.
-    Children appear before their parents (post-order DFS).
+    Children appear before their parents (iterative post-order DFS).
 
     This guarantees that by the time we process a node during backprop,
-    all gradients flowing into it have been fully accumulated.
+    all gradients flowing into it have been fully accumulated, and graphs
+    of arbitrary depth (> 1,000 layers) never hit Python recursion limits.
     """
     topo: List[Tensor] = []
     visited: Set[int] = set()
+    stack: List[Tuple[Tensor, bool]] = [(root, False)]
 
-    def _visit(node: Tensor) -> None:
+    while stack:
+        node, processed = stack.pop()
         node_id = id(node)
+        if processed:
+            topo.append(node)
+            continue
         if node_id in visited:
-            return
+            continue
         visited.add(node_id)
-        for child in node._prev:
-            _visit(child)
-        topo.append(node)
+        stack.append((node, True))
+        for child in reversed(node._prev):
+            if id(child) not in visited:
+                stack.append((child, False))
 
-    _visit(root)
     return topo
 
 
@@ -45,17 +51,8 @@ def get_computation_graph(root: Tensor) -> Dict[int, Dict[str, Any]]:
         Dict mapping tensor id -> {tensor, op, shape, grad_shape, parents}
     """
     graph: Dict[int, Dict[str, Any]] = {}
-    visited: Set[int] = set()
-
-    def _build(node: Tensor) -> None:
+    for node in topological_sort(root):
         node_id = id(node)
-        if node_id in visited:
-            return
-        visited.add(node_id)
-
-        for child in node._prev:
-            _build(child)
-
         graph[node_id] = {
             "tensor": node,
             "op": node._op,
@@ -63,8 +60,6 @@ def get_computation_graph(root: Tensor) -> Dict[int, Dict[str, Any]]:
             "requires_grad": node.requires_grad,
             "parents": [id(p) for p in node._prev],
         }
-
-    _build(root)
     return graph
 
 
@@ -104,30 +99,35 @@ def trace(root: Tensor) -> List[Tensor]:
     return topological_sort(root)
 
 
-
 def has_cycle(root: Tensor) -> bool:
     """
-    Detect if the computation graph contains a cycle.
+    Detect if the computation graph contains a cycle using iterative DFS.
     A proper autograd graph should always be a DAG (Directed Acyclic Graph).
     """
     GRAY, BLACK = 1, 2
     state: Dict[int, int] = defaultdict(int)
+    stack: List[Tuple[Tensor, bool]] = [(root, False)]
 
-    def _dfs(node: Tensor) -> bool:
+    while stack:
+        node, leaving = stack.pop()
         node_id = id(node)
+        if leaving:
+            state[node_id] = BLACK
+            continue
         if state[node_id] == GRAY:
-            return True  # Back edge = cycle
+            return True
         if state[node_id] == BLACK:
-            return False
-
+            continue
         state[node_id] = GRAY
-        for child in node._prev:
-            if _dfs(child):
+        stack.append((node, True))
+        for child in reversed(node._prev):
+            c_id = id(child)
+            if state[c_id] == GRAY:
                 return True
-        state[node_id] = BLACK
-        return False
+            if state[c_id] != BLACK:
+                stack.append((child, False))
 
-    return _dfs(root)
+    return False
 
 
 def detach(tensor: Tensor) -> Tensor:
@@ -141,8 +141,10 @@ def detach(tensor: Tensor) -> Tensor:
 # Module-level flag
 _grad_enabled = True
 
+
 def is_grad_enabled() -> bool:
     return _grad_enabled
+
 
 class no_grad:
     """Context manager and decorator that disables gradient computation.

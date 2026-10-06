@@ -1,17 +1,18 @@
 """
 pramana.py — P.R.A.M.A.N.A. (Probabilistic Representation of Analytical Moments and Algebraic Noise-aware Autograd)
 
-Distributional Uncertainty Tensors with closed-form propagation of epistemic
-and aleatoric confidence in pure NumPy/Tensor.
+Distributional Uncertainty Tensors with analytical propagation of first and second
+moments in pure NumPy/Tensor.
 
-Features:
-- DistributionalTensor: Dual-stream tensor tracking mean and variance moments (X ~ N(mu, sigma^2)).
-- Closed-Form Uncertainty Calculus: Analytical Taylor moment propagation through linear
-  transformations, products, and non-linearities (Tanh, Sigmoid, ReLU, GELU).
-- DistributionalLinear: Dense layer propagating analytical variance in a single forward pass.
-- DistributionalSequential: Container for uncertainty-aware neural networks.
-- GaussianNLLLoss: Heteroscedastic negative log-likelihood loss for joint mean-variance optimization.
-- PramanaTelemetry: Epistemic calibration metrics and out-of-distribution hallucination detection.
+Mathematical Scope & Approximation Guarantees:
+- Exact Moment Propagation: Closed-form exact expectation and variance for linear/affine
+  transformations (DistributionalLinear) and independent bilinear products (Goodman, 1960).
+- First-Order Delta-Method Approximation: Non-linear activations (Tanh, Sigmoid, ReLU, GELU)
+  use first-order Taylor expansion around the mean (Var[f(X)] ≈ [f'(mu)]^2 * Var[X]) under a
+  diagonal independence assumption. This is accurate in the small-variance regime (sigma << 1)
+  and does not track off-diagonal unit-to-unit covariances across multi-layer compositions.
+- HeteroscedasticMLP & GaussianNLLLoss: Dual-head non-linear network and negative log-likelihood
+  loss for learning input-dependent conditional mean mu(x) and variance sigma^2(x).
 """
 from __future__ import annotations
 
@@ -390,6 +391,45 @@ class DistributionalSequential(Module):
         return self.layers[idx]
 
 
+class HeteroscedasticMLP(Module):
+    """
+    Non-Linear Dual-Head Network for Input-Dependent Heteroscedastic Uncertainty.
+
+    Maps inputs x (or DistributionalTensor(x)) through a non-linear hidden representation
+    to jointly predict input-dependent conditional mean mu(x) and conditional variance
+    sigma^2(x) = exp(clamp(log_var(x), -10, 10)) + propagated_epistemic_var.
+    """
+
+    def __init__(
+        self,
+        in_features: int,
+        hidden_features: int = 16,
+        out_features: int = 1,
+    ) -> None:
+        super().__init__()
+        from minigrad.nn.linear import Linear
+        self.fc1 = Linear(in_features, hidden_features, bias=True)
+        self.mean_head = Linear(hidden_features, out_features, bias=True)
+        self.log_var_head = Linear(hidden_features, out_features, bias=True)
+
+    def forward(self, x: Union[DistributionalTensor, Tensor]) -> DistributionalTensor:
+        x_dist = x if isinstance(x, DistributionalTensor) else DistributionalTensor(x)
+        assert self.fc1.bias is not None
+        assert self.mean_head.bias is not None
+        assert self.log_var_head.bias is not None
+        h_dist = (x_dist @ self.fc1.weight + self.fc1.bias).tanh()
+        mu_dist = h_dist @ self.mean_head.weight + self.mean_head.bias
+
+        # Input-dependent aleatoric log-variance head on hidden mean features
+        from minigrad.ops import clip as ops_clip
+        log_var = ops_clip(self.log_var_head(h_dist.mean), -10.0, 10.0)
+        aleatoric_var = log_var.exp()
+
+        # Total variance = input-dependent aleatoric variance + propagated epistemic variance
+        total_var = aleatoric_var + mu_dist.var
+        return DistributionalTensor(mu_dist.mean, total_var)
+
+
 # ── Heteroscedastic Gaussian NLL Loss ────────────────────────────────
 
 class GaussianNLLLoss(Module):
@@ -482,5 +522,6 @@ class PRAMANA:
     DistributionalTensor = DistributionalTensor
     DistributionalLinear = DistributionalLinear
     DistributionalSequential = DistributionalSequential
+    HeteroscedasticMLP = HeteroscedasticMLP
     GaussianNLLLoss = GaussianNLLLoss
     PramanaTelemetry = PramanaTelemetry

@@ -100,21 +100,31 @@ def _compute_vjp(node: Tensor, g: Tensor) -> Tuple[Optional[Tensor], ...]:
 
     elif op == "matmul":
         a, b = children
-        if a.data.ndim == 1 and b.data.ndim == 2:
-            g_2d = g.reshape(1, -1) if g.data.ndim == 1 else g
-            a_col = a.reshape(-1, 1)
-            vjp_a = (g_2d @ b.transpose()).reshape(a.shape) if a.requires_grad else None
-            vjp_b = (a_col @ g_2d) if b.requires_grad else None
+        if a.data.ndim == 1 and b.data.ndim == 1:
+            vjp_a = unbroadcast_tensor(g * b, a.shape) if a.requires_grad else None
+            vjp_b = unbroadcast_tensor(g * a, b.shape) if b.requires_grad else None
             return (vjp_a, vjp_b)
-        elif a.data.ndim == 2 and b.data.ndim == 1:
-            g_2d = g.reshape(-1, 1) if g.data.ndim == 1 else g
-            b_row = b.reshape(1, -1)
-            vjp_a = (g_2d @ b_row) if a.requires_grad else None
-            vjp_b = (a.transpose() @ g_2d).reshape(b.shape) if b.requires_grad else None
+        elif a.data.ndim == 1 and b.data.ndim >= 2:
+            g_exp = g.reshape(*g.shape[:-1], 1, g.shape[-1])
+            a_exp = a.reshape(1, -1)
+            vjp_a = (
+                unbroadcast_tensor((g_exp @ b.swapaxes(-1, -2)).reshape(*g.shape[:-1], a.shape[0]), a.shape)
+                if a.requires_grad else None
+            )
+            vjp_b = unbroadcast_tensor(a_exp.swapaxes(-1, -2) @ g_exp, b.shape) if b.requires_grad else None
+            return (vjp_a, vjp_b)
+        elif a.data.ndim >= 2 and b.data.ndim == 1:
+            g_exp = g.reshape(*g.shape, 1)
+            b_exp = b.reshape(1, -1)
+            vjp_a = unbroadcast_tensor(g_exp @ b_exp, a.shape) if a.requires_grad else None
+            vjp_b = (
+                unbroadcast_tensor((a.swapaxes(-1, -2) @ g_exp).reshape(*g.shape, b.shape[0]), b.shape)
+                if b.requires_grad else None
+            )
             return (vjp_a, vjp_b)
         else:
-            vjp_a = (g @ b.transpose()) if a.requires_grad else None
-            vjp_b = (a.transpose() @ g) if b.requires_grad else None
+            vjp_a = unbroadcast_tensor(g @ b.swapaxes(-1, -2), a.shape) if a.requires_grad else None
+            vjp_b = unbroadcast_tensor(a.swapaxes(-1, -2) @ g, b.shape) if b.requires_grad else None
             return (vjp_a, vjp_b)
 
     elif op == "tanh":
@@ -152,7 +162,7 @@ def _compute_vjp(node: Tensor, g: Tensor) -> Tuple[Optional[Tensor], ...]:
 
     elif op == "gelu":
         (a,) = children
-        c = np.sqrt(2.0 / np.pi)
+        c = float(np.sqrt(2.0 / np.pi))
         u = c * (a + 0.044715 * (a ** 3))
         tanh_u = u.tanh()
         sech2 = Tensor(np.ones_like(a.data, dtype=a.data.dtype)) - (tanh_u ** 2)
@@ -215,7 +225,7 @@ def _compute_vjp(node: Tensor, g: Tensor) -> Tuple[Optional[Tensor], ...]:
         (a,) = children
         return (g.to(a.dtype) if a.requires_grad else None,)
 
-    elif op == "getitem":
+    elif op in ("getitem", "embedding"):
         (a,) = children
         idx = getattr(node, "_ctx", None)
         grad_a = np.zeros(a.shape, dtype=a.data.dtype)
@@ -229,10 +239,12 @@ def _compute_vjp(node: Tensor, g: Tensor) -> Tuple[Optional[Tensor], ...]:
             _ctx=(a.shape, idx),
         ) if a.requires_grad else None
         if vjp_a is not None and g.requires_grad:
-            target_vjp = vjp_a
+            import weakref
+            vjp_ref = weakref.ref(vjp_a)
             def _backward() -> None:
-                if g.requires_grad:
-                    g.grad += target_vjp.grad[idx]
+                tv = vjp_ref()
+                if tv is not None and g.requires_grad:
+                    g.grad += tv.grad[idx]
             vjp_a._backward = _backward
         return (vjp_a,)
 
@@ -240,6 +252,73 @@ def _compute_vjp(node: Tensor, g: Tensor) -> Tuple[Optional[Tensor], ...]:
         (g_orig,) = children
         shape, idx = getattr(node, "_ctx", (None, None))
         return (g[idx] if g_orig.requires_grad else None,)
+
+    elif op == "split":
+        (a,) = children
+        norm_axis, start, end = getattr(node, "_ctx", (0, 0, a.shape[0]))
+        slices = tuple(slice(start, end) if i == norm_axis else slice(None) for i in range(a.data.ndim))
+        grad_a = np.zeros(a.shape, dtype=a.data.dtype)
+        grad_a[slices] = g.data
+        vjp_a = Tensor(
+            grad_a,
+            requires_grad=a.requires_grad,
+            _children=(g,) if g.requires_grad else (),
+            _op="scatter",
+            _ctx=(a.shape, slices),
+        ) if a.requires_grad else None
+        if vjp_a is not None and g.requires_grad:
+            import weakref
+            vjp_ref = weakref.ref(vjp_a)
+            def _backward_split() -> None:
+                tv = vjp_ref()
+                if tv is not None and g.requires_grad:
+                    g.grad += tv.grad[slices]
+            vjp_a._backward = _backward_split
+        return (vjp_a,)
+
+    elif op == "pad":
+        (a,) = children
+        pad_width = getattr(node, "_ctx", None)
+        if not a.requires_grad or pad_width is None:
+            return (None,)
+        slices_pad = []
+        for p in pad_width:
+            if isinstance(p, int):
+                slices_pad.append(slice(p, -p if p > 0 else None))
+            else:
+                slices_pad.append(slice(p[0], -p[1] if p[1] > 0 else None))
+        return (g[tuple(slices_pad)],)
+
+    elif op == "einsum":
+        from minigrad.ops import einsum as ops_einsum
+        subscripts = getattr(node, "_ctx", None)
+        if subscripts is None:
+            raise NotImplementedError("einsum node missing subscript context for VJP")
+        if "->" in subscripts:
+            input_subs, output_sub = subscripts.split("->")
+        else:
+            input_subs = subscripts
+            output_sub = ""
+        input_sub_list = input_subs.split(",")
+        vjps_ein: List[Optional[Tensor]] = []
+        for i, op_i in enumerate(children):
+            if not op_i.requires_grad:
+                vjps_ein.append(None)
+                continue
+            target_sub = input_sub_list[i]
+            if len(set(target_sub)) < len(target_sub) and output_sub == "":
+                dim = op_i.data.shape[0]
+                vjps_ein.append(g * Tensor(np.eye(dim, dtype=op_i.data.dtype)))
+                continue
+            backward_inputs = [output_sub]
+            backward_tensors = [g]
+            for j, op_j in enumerate(children):
+                if j != i:
+                    backward_inputs.append(input_sub_list[j])
+                    backward_tensors.append(op_j)
+            backward_subscripts = ",".join(backward_inputs) + "->" + target_sub
+            vjps_ein.append(ops_einsum(backward_subscripts, *backward_tensors))
+        return tuple(vjps_ein)
 
     elif op == "stack":
         axis = getattr(node, "_ctx", 0)
@@ -269,6 +348,89 @@ def _compute_vjp(node: Tensor, g: Tensor) -> Tuple[Optional[Tensor], ...]:
                 vjps_c.append(None)
             offset += length
         return tuple(vjps_c)
+
+    elif op == "layer_norm":
+        x, gamma, beta = children
+        axes, eps = getattr(node, "_ctx", ((x.data.ndim - 1,), 1e-5))
+        ndim = len(axes)
+        N = 1
+        for ax in axes:
+            N *= x.data.shape[ax]
+        mean = x.mean(axis=axes, keepdims=True)
+        diff = x - mean
+        var = (diff ** 2).mean(axis=axes, keepdims=True)
+        std_inv = (var + eps) ** -0.5
+        x_norm = diff * std_inv
+
+        reduce_axes = tuple(range(x.data.ndim - ndim))
+        vjp_gamma = (
+            (g * x_norm).sum(axis=reduce_axes, keepdims=False)
+            if (gamma.requires_grad and x.data.ndim > ndim)
+            else ((g * x_norm) if gamma.requires_grad else None)
+        )
+        vjp_beta = (
+            g.sum(axis=reduce_axes, keepdims=False)
+            if (beta.requires_grad and x.data.ndim > ndim)
+            else (g if beta.requires_grad else None)
+        )
+        if x.requires_grad:
+            dx_norm = g * gamma
+            dx_var = (dx_norm * diff * -0.5 * (std_inv ** 3)).sum(axis=axes, keepdims=True)
+            dx_mean = (dx_norm * -std_inv).sum(axis=axes, keepdims=True)
+            vjp_x = dx_norm * std_inv + (2.0 / N) * diff * dx_var + dx_mean * (1.0 / N)
+        else:
+            vjp_x = None
+        return (vjp_x, vjp_gamma, vjp_beta)
+
+    elif op == "cross_entropy":
+        from minigrad.ops import softmax as ops_softmax
+        (logits,) = children
+        targets, reduction = getattr(node, "_ctx", (None, "mean"))
+        if not logits.requires_grad or targets is None:
+            return (None,)
+        N = logits.data.shape[0]
+        probs = ops_softmax(logits, axis=1)
+        one_hot = np.zeros_like(logits.data)
+        one_hot[np.arange(N), targets] = 1.0
+        grad_ce = probs - Tensor(one_hot, dtype=logits.dtype)
+        if reduction == "mean":
+            grad_ce = grad_ce * (1.0 / N)
+        return (grad_ce * g,)
+
+    elif op == "bce":
+        (pred,) = children
+        t, reduction, eps = getattr(node, "_ctx", (None, "mean", 1e-7))
+        if not pred.requires_grad or t is None:
+            return (None,)
+        from minigrad.ops import clip as ops_clip
+        p = ops_clip(pred, eps, 1.0 - eps)
+        t_tensor = Tensor(t, dtype=pred.dtype)
+        grad_bce = -(t_tensor / p - (Tensor(np.ones_like(pred.data, dtype=pred.dtype)) - t_tensor) / (Tensor(np.ones_like(pred.data, dtype=pred.dtype)) - p))
+        if reduction == "mean":
+            grad_bce = grad_bce * (1.0 / pred.data.size)
+        return (grad_bce * g,)
+
+    elif op == "bce_with_logits":
+        (logits,) = children
+        t, reduction = getattr(node, "_ctx", (None, "mean"))
+        if not logits.requires_grad or t is None:
+            return (None,)
+        grad_bcel = logits.sigmoid() - Tensor(t, dtype=logits.dtype)
+        if reduction == "mean":
+            grad_bcel = grad_bcel * (1.0 / logits.data.size)
+        return (grad_bcel * g,)
+
+    elif op == "nll":
+        (log_probs,) = children
+        targets, reduction = getattr(node, "_ctx", (None, "mean"))
+        if not log_probs.requires_grad or targets is None:
+            return (None,)
+        N = log_probs.data.shape[0]
+        grad_nll = np.zeros_like(log_probs.data)
+        grad_nll[np.arange(N), targets] = -1.0
+        if reduction == "mean":
+            grad_nll = grad_nll / N
+        return (Tensor(grad_nll, dtype=log_probs.dtype) * g,)
 
     elif op in ("fused_linear", "fused_linear_relu"):
         x = children[0]
@@ -420,19 +582,27 @@ def grad(
                 for g in grad_outputs
             ]
 
-    # Build topological sort from outputs
+    # Build iterative topological sort from outputs
     topo: List[Tensor] = []
     visited: Set[int] = set()
 
-    def build_topo(node: Tensor) -> None:
-        if id(node) not in visited:
-            visited.add(id(node))
-            for child in node._prev:
-                build_topo(child)
-            topo.append(node)
-
     for out in outputs_list:
-        build_topo(out)
+        if id(out) in visited:
+            continue
+        stack_dfs: List[Tuple[Tensor, bool]] = [(out, False)]
+        while stack_dfs:
+            node, processed = stack_dfs.pop()
+            nid = id(node)
+            if processed:
+                topo.append(node)
+                continue
+            if nid in visited:
+                continue
+            visited.add(nid)
+            stack_dfs.append((node, True))
+            for child in reversed(list(node._prev)):
+                if id(child) not in visited:
+                    stack_dfs.append((child, False))
 
     for node in topo:
         if node not in outputs_list and node._prev and node._lifecycle == GraphState.FREED:
@@ -479,9 +649,10 @@ def grad(
         result.append(res)
 
     if not retain_graph and not create_graph:
+        from minigrad.tensor import _noop_backward
         for out in outputs_list:
             out._lifecycle = GraphState.FREED
-            out._backward = lambda: None
+            out._backward = _noop_backward
 
     return tuple(result)
 

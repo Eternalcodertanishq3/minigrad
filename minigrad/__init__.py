@@ -17,7 +17,7 @@ Usage:
     optimizer = Adam(model.parameters(), lr=1e-3)
 """
 
-__version__ = "1.3.4"
+__version__ = "1.4.0"
 
 from minigrad.tensor import Tensor
 from minigrad.graph import topological_sort, trace, print_graph
@@ -66,6 +66,7 @@ from minigrad.pramana import (
     DistributionalTensor,
     DistributionalLinear,
     DistributionalSequential,
+    HeteroscedasticMLP,
     GaussianNLLLoss,
     PramanaTelemetry,
 )
@@ -138,6 +139,7 @@ __all__ = [
     "DistributionalTensor",
     "DistributionalLinear",
     "DistributionalSequential",
+    "HeteroscedasticMLP",
     "GaussianNLLLoss",
     "PramanaTelemetry",
     "TARKA",

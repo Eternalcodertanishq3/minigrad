@@ -11,6 +11,7 @@ Neuromorphic Event-Driven Spiking Dynamics & Surrogate-Gradient SNNs:
 """
 from __future__ import annotations
 
+import weakref
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple, Union
 
@@ -54,28 +55,34 @@ def surrogate_spike(
         _op=f"surrogate_spike({surrogate})",
     )
 
-    def _backward() -> None:
-        if v.requires_grad:
-            x = v.data - v_th
-            if surrogate == SurrogateType.FAST_SIGMOID:
-                # Zenke & Ganguli (2018): sigma'(x) = 1 / (1 + alpha * |x|)^2
-                grad_surr = 1.0 / ((1.0 + alpha * np.abs(x)) ** 2)
-            elif surrogate == SurrogateType.ATAN:
-                # ArcTan surrogate: sigma'(x) = 1 / (pi * (1 + (pi * alpha * x)^2))
-                grad_surr = 1.0 / (np.pi * (1.0 + (np.pi * alpha * x) ** 2))
-            elif surrogate == SurrogateType.GAUSSIAN:
-                # Gaussian surrogate: normal distribution with scale 1/alpha
-                sigma = 1.0 / max(alpha, 1e-4)
-                grad_surr = (1.0 / (np.sqrt(2.0 * np.pi) * sigma)) * np.exp(-0.5 * (x / sigma) ** 2)
-            elif surrogate == SurrogateType.BOXCAR:
-                # Piecewise linear boxcar window
-                grad_surr = np.where(np.abs(x) < 0.5 * alpha, 1.0 / max(alpha, 1e-4), 0.0)
-            else:
-                raise ValueError(f"Unknown surrogate function: '{surrogate}'")
+    if out.requires_grad:
+        out_ref = weakref.ref(out)
 
-            v.grad += grad_surr * out.grad
+        def _backward() -> None:
+            o = out_ref()
+            if o is None:
+                return
+            if v.requires_grad:
+                x = v.data - v_th
+                if surrogate == SurrogateType.FAST_SIGMOID:
+                    # Zenke & Ganguli (2018): sigma'(x) = 1 / (1 + alpha * |x|)^2
+                    grad_surr = 1.0 / ((1.0 + alpha * np.abs(x)) ** 2)
+                elif surrogate == SurrogateType.ATAN:
+                    # ArcTan surrogate: sigma'(x) = 1 / (pi * (1 + (pi * alpha * x)^2))
+                    grad_surr = 1.0 / (np.pi * (1.0 + (np.pi * alpha * x) ** 2))
+                elif surrogate == SurrogateType.GAUSSIAN:
+                    # Gaussian surrogate: normal distribution with scale 1/alpha
+                    sigma = 1.0 / max(alpha, 1e-4)
+                    grad_surr = (1.0 / (np.sqrt(2.0 * np.pi) * sigma)) * np.exp(-0.5 * (x / sigma) ** 2)
+                elif surrogate == SurrogateType.BOXCAR:
+                    # Piecewise linear boxcar window
+                    grad_surr = np.where(np.abs(x) < 0.5 * alpha, 1.0 / max(alpha, 1e-4), 0.0)
+                else:
+                    raise ValueError(f"Unknown surrogate function: '{surrogate}'")
 
-    out._backward = _backward
+                v.grad += grad_surr * o.grad
+
+        out._backward = _backward
     return out
 
 
@@ -174,6 +181,8 @@ class LIFLayer(Module):
             alpha=alpha,
             detach_reset=detach_reset,
         )
+        self.last_spikes: Optional[np.ndarray] = None
+        self.last_firing_rate: float = 0.0
 
     def forward(self, current_seq: Tensor) -> Tensor:
         """
@@ -188,7 +197,10 @@ class LIFLayer(Module):
             s_t, state = self.cell(i_t, state)
             spikes.append(s_t)
 
-        return ops.stack(spikes, axis=0)
+        out = ops.stack(spikes, axis=0)
+        self.last_spikes = out.data.copy()
+        self.last_firing_rate = float(np.mean(out.data))
+        return out
 
 
 # ── Spiking Layers & Sequences ────────────────────────────────────────
@@ -217,6 +229,8 @@ class SpikingLinear(Module):
         self.out_features = out_features
         self.linear = Linear(in_features, out_features, bias=bias)
         self.cell = LIFCell(beta=beta, v_th=v_th, surrogate=surrogate, alpha=alpha)
+        self.last_spikes: Optional[np.ndarray] = None
+        self.last_firing_rate: float = 0.0
 
     def forward(self, x: Tensor, num_steps: Optional[int] = None) -> Tensor:
         """
@@ -238,7 +252,10 @@ class SpikingLinear(Module):
                 s_t, state = self.cell(current_t, state)
                 spikes.append(s_t)
 
-            return ops.stack(spikes, axis=0)
+            out = ops.stack(spikes, axis=0)
+            self.last_spikes = out.data.copy()
+            self.last_firing_rate = float(np.mean(out.data))
+            return out
 
         elif x.ndim == 3:
             # Temporal sequence: (T, B, in_features)
@@ -251,7 +268,10 @@ class SpikingLinear(Module):
                 s_t, state = self.cell(current_t, state)
                 spikes.append(s_t)
 
-            return ops.stack(spikes, axis=0)
+            out = ops.stack(spikes, axis=0)
+            self.last_spikes = out.data.copy()
+            self.last_firing_rate = float(np.mean(out.data))
+            return out
 
         else:
             raise ValueError(f"SpikingLinear expects 2D or 3D tensor, got shape {x.shape}")
@@ -262,9 +282,12 @@ class SpikingSequential(Module):
     Temporal Sequential Container for multi-layer SNN architectures.
     """
 
-    def __init__(self, layers: Sequence[Module]) -> None:
+    def __init__(self, *args: Union[Module, Sequence[Module]]) -> None:
         super().__init__()
-        self.layers = list(layers)
+        if len(args) == 1 and isinstance(args[0], (list, tuple)):
+            self.layers = list(args[0])
+        else:
+            self.layers = [layer for layer in args if isinstance(layer, Module)]
 
     def forward(self, x: Tensor, num_steps: Optional[int] = None) -> Tensor:
         out = x
@@ -361,6 +384,9 @@ class MembraneDecoder(Module):
 class SpandaTelemetry:
     """
     Neuromorphic Hardware Energy & Synaptic Operations (SynOps) Diagnostics.
+    Compares T-step event-driven SNN Accumulate (AC) operations against a
+    single-pass (T=1) static ANN Multiply-Accumulate (MAC) baseline using
+    actual per-layer measured firing rates.
     """
     num_steps: int
     mean_firing_rate: float
@@ -374,16 +400,16 @@ class SpandaTelemetry:
 
     def summary(self) -> str:
         return "\n".join([
-            "S.P.A.N.D.A. Neuromorphic Hardware Telemetry:",
+            "S.P.A.N.D.A. Neuromorphic Hardware Telemetry (Single-Pass ANN vs T-Step SNN):",
             f"  Time-Steps (T):              {self.num_steps}",
-            f"  Average Spike Firing Rate:   {self.mean_firing_rate * 100:.2f}%",
+            f"  Average Spike Firing Rate:   {self.mean_firing_rate * 100:.2f}% (measured across layers)",
             f"  Temporal Event Sparsity:     {self.mean_sparsity * 100:.2f}% (zero-quiescent)",
-            f"  Equivalent Dense MACs:       {self.dense_macs:,}",
-            f"  Event-Driven Spiking ACs:    {self.spiking_acs:,}",
-            f"  SynOps Reduction Ratio:      {self.synops_reduction_ratio:.2f}x fewer operations",
-            f"  Estimated ANN Energy:        {self.estimated_ann_energy_pj:.2f} pJ",
-            f"  Estimated SNN Energy:        {self.estimated_snn_energy_pj:.2f} pJ",
-            f"  Neuromorphic Energy Savings: {self.energy_efficiency_gain:.2f}x MORE EFFICIENT!",
+            f"  Single-Pass ANN MACs (T=1):  {self.dense_macs:,}",
+            f"  Event-Driven Spiking ACs:    {self.spiking_acs:,} (integrated over T={self.num_steps})",
+            f"  SynOps Ratio (ANN / SNN):    {self.synops_reduction_ratio:.2f}x",
+            f"  Estimated ANN Energy (T=1):  {self.estimated_ann_energy_pj:.2f} pJ (@ 4.6 pJ/MAC)",
+            f"  Estimated SNN Energy (T={self.num_steps}): {self.estimated_snn_energy_pj:.2f} pJ (@ 0.9 pJ/AC)",
+            f"  Neuromorphic Energy Ratio:   {self.energy_efficiency_gain:.2f}x",
         ])
 
 
@@ -412,7 +438,10 @@ class SPANDA:
     ) -> SpandaTelemetry:
         """
         Runs an evaluation pass and profiles neuromorphic event sparsity,
-        synaptic operations (SynOps), and hardware energy consumption.
+        synaptic operations (SynOps), and analytical energy estimates.
+
+        Uses actual per-layer recorded spike trains and compares T-step SNN
+        accumulate operations against a single-pass (T=1) static ANN baseline.
         """
         from minigrad.graph import no_grad
 
@@ -420,6 +449,7 @@ class SPANDA:
             if sample_input.ndim == 2:
                 out = model(sample_input, num_steps=num_steps)
             else:
+                num_steps = sample_input.shape[0]
                 out = model(sample_input)
 
         # Inspect layers
@@ -428,35 +458,46 @@ class SPANDA:
 
         total_dense_macs = 0
         total_spiking_acs = 0
-        all_spikes: List[np.ndarray] = []
-
-        if isinstance(out, Tensor) and out.ndim == 3:
-            all_spikes.append(out.data)
+        total_spikes_emitted = 0.0
+        total_spike_sites = 0
 
         for layer in layers:
             if isinstance(layer, SpikingLinear):
                 w = layer.linear.weight.data
                 in_f, out_f = w.shape
-                # Dense MACs = T * B * (in_features * out_features)
-                layer_dense = num_steps * batch_size * (in_f * out_f)
-                total_dense_macs += layer_dense
+                # Single-pass (T=1) static ANN baseline MACs = B * in_f * out_f
+                layer_single_pass_macs = batch_size * (in_f * out_f)
+                total_dense_macs += layer_single_pass_macs
 
-                # Estimated firing rate based on output or empirical activity
-                if all_spikes:
-                    f_rate = float(np.mean(all_spikes[-1]))
+                # Actual measured firing rate for this specific layer
+                if layer.last_spikes is not None:
+                    f_rate = float(np.mean(layer.last_spikes))
+                    total_spikes_emitted += float(np.sum(layer.last_spikes))
+                    total_spike_sites += int(layer.last_spikes.size)
                 else:
-                    f_rate = 0.15
-                layer_acs = int(layer_dense * f_rate)
-                total_spiking_acs += layer_acs
+                    f_rate = 0.0
 
-        mean_fr = float(np.mean(all_spikes)) if all_spikes else 0.12
+                # Event-driven SNN ACs accumulated over all T steps
+                layer_acs = int(round(num_steps * layer_single_pass_macs * f_rate))
+                total_spiking_acs += layer_acs
+            elif isinstance(layer, LIFLayer) and layer.last_spikes is not None:
+                total_spikes_emitted += float(np.sum(layer.last_spikes))
+                total_spike_sites += int(layer.last_spikes.size)
+
+        if total_spike_sites > 0:
+            mean_fr = total_spikes_emitted / total_spike_sites
+        elif isinstance(out, Tensor) and out.ndim == 3:
+            mean_fr = float(np.mean(out.data))
+        else:
+            mean_fr = 0.0
+
         sparsity = 1.0 - mean_fr
 
         if total_dense_macs == 0:
-            total_dense_macs = 1000
-            total_spiking_acs = int(1000 * mean_fr)
+            total_dense_macs = max(int(sample_input.data.size), 1)
+            total_spiking_acs = int(round(num_steps * total_dense_macs * mean_fr))
 
-        # Standard 32-bit hardware energy: MAC ~ 4.6 pJ, AC ~ 0.9 pJ
+        # Analytical 45nm CMOS energy model (Horowitz 2014): 32-bit FP MAC ~ 4.6 pJ, AC ~ 0.9 pJ
         ann_pj = total_dense_macs * 4.6
         snn_pj = max(total_spiking_acs * 0.9, 1e-3)
         gain = ann_pj / snn_pj

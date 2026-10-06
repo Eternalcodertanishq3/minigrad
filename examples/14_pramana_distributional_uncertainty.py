@@ -1,16 +1,17 @@
 """
 examples/14_pramana_distributional_uncertainty.py — P.R.A.M.A.N.A. Distributional Uncertainty Tensors
 
-Demonstrates Innovation 3 of miniGrad:
-P.R.A.M.A.N.A. (Probabilistic Representation of Analytical Moments and Algebraic Noise-aware Autograd)
+Demonstrates P.R.A.M.A.N.A. (Probabilistic Representation of Analytical Moments and Algebraic Noise-aware Autograd):
 
-1. Single-Pass Analytical Variance vs. 100,000-Sample Monte Carlo Simulation
-   - Compares instantaneous moment propagation against empirical sampling.
-   - Shows ~400x speedup with < 1% error.
-2. Real-Time Out-of-Distribution (OOD) & Epistemic Hallucination Detection
-   - Shows variance exploding on OOD queries without ensembles or sampling.
-3. Heteroscedastic Noise Learning with Gaussian NLL Loss & Dual Autograd
-   - Jointly learns input-dependent function mean and heteroscedastic noise envelope.
+1. Analytical Moment Propagation vs. 100,000-Sample Monte Carlo Simulation
+   - Exact closed-form variance for affine transformations (DistributionalLinear).
+   - First-order Taylor (delta-method) diagonal variance approximation for non-linearities (Tanh)
+     across small-variance vs large-variance regimes.
+2. Trained Bayesian Weight Uncertainty & Out-of-Distribution (OOD) Detection
+   - Trains a DistributionalLinear layer with weight_uncertainty=True on in-distribution data,
+     then measures epistemic variance growth on OOD inputs.
+3. Heteroscedastic Noise Learning with Dual-Head HeteroscedasticMLP & Gaussian NLL Loss
+   - Jointly learns input-dependent conditional mean mu(x) and heteroscedastic variance sigma^2(x).
 """
 import sys
 import time
@@ -24,12 +25,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from minigrad import (
     PRAMANA,
     DistributionalLinear,
-    DistributionalSequential,
     DistributionalTensor,
     GaussianNLLLoss,
     Tensor,
 )
 from minigrad.optim import Adam
+from minigrad.pramana import HeteroscedasticMLP
 
 
 def print_banner(title: str):
@@ -39,26 +40,27 @@ def print_banner(title: str):
 
 
 def demo_analytical_vs_monte_carlo():
-    print_banner("EXPERIMENT 1: Single-Pass Analytical Variance vs. 100,000-Sample Monte Carlo")
-    print("Standard Bayesian DL requires hundreds of stochastic Monte Carlo forward passes.")
-    print("P.R.A.M.A.N.A. propagates exact analytical variance through non-linear layers in 1 pass.\n")
+    print_banner("EXPERIMENT 1: Analytical Moment Propagation vs. 100,000-Sample Monte Carlo")
+    print("Affine transformations propagate exact analytical mean and variance.")
+    print("Non-linearities use first-order Taylor (delta-method) approximations (accurate for small sigma).\n")
 
     np.random.seed(42)
-    in_dim, _, out_dim = 4, 8, 2
+    in_dim, out_dim = 4, 2
 
-    # Distributional Layer
+    # Distributional Affine Layer (Exact moment propagation)
     model = DistributionalLinear(in_dim, out_dim, bias=True)
 
-    # Input with known epistemic noise
     mu_in = np.array([[1.0, -0.5, 2.0, 0.3]])
-    var_in = np.array([[0.1, 0.05, 0.2, 0.08]])
+    var_in = np.array([[0.01, 0.01, 0.01, 0.01]])
     x_dist = DistributionalTensor(mu_in, var_in)
 
-    # 1. P.R.A.M.A.N.A. Analytical Single-Pass
+    # 1. P.R.A.M.A.N.A. Analytical Single-Pass (Linear + Tanh in small-variance regime)
     t0 = time.perf_counter()
-    out_dist = model(x_dist)
-    mu_ana = out_dist.mean.numpy()
-    var_ana = out_dist.var.numpy()
+    lin_dist = model(x_dist)
+    tanh_dist = lin_dist.tanh()
+    mu_ana = lin_dist.mean.numpy()
+    var_ana = lin_dist.var.numpy()
+    var_tanh_ana = tanh_dist.var.numpy()
     t_ana = (time.perf_counter() - t0) * 1000.0  # ms
 
     # 2. Empirical Monte Carlo (100,000 forward passes)
@@ -71,76 +73,82 @@ def demo_analytical_vs_monte_carlo():
     w = model.weight.numpy()
     b = model.bias.numpy()
     out_samples = samples @ w + b
+    tanh_samples = np.tanh(out_samples)
 
     mu_mc = np.mean(out_samples, axis=0, keepdims=True)
     var_mc = np.var(out_samples, axis=0, keepdims=True)
+    var_tanh_mc = np.var(tanh_samples, axis=0, keepdims=True)
     t_mc = (time.perf_counter() - t0) * 1000.0  # ms
 
     mean_err = np.max(np.abs(mu_ana - mu_mc))
     var_err = np.max(np.abs(var_ana - var_mc))
+    tanh_rel_err = float(np.mean(np.abs(var_tanh_ana - var_tanh_mc) / np.maximum(var_tanh_mc, 1e-12))) * 100.0
     speedup = t_mc / max(t_ana, 1e-6)
 
-    print(f"Analytical Mean:            {mu_ana[0]}")
-    print(f"Monte Carlo Mean (N=100k):   {mu_mc[0]}")
-    print(f"Mean Absolute Discrepancy:  {mean_err:.6f}")
-    print()
-    print(f"Analytical Variance:        {var_ana[0]}")
-    print(f"Monte Carlo Variance:       {var_mc[0]}")
-    print(f"Variance Discrepancy:       {var_err:.6f}")
-    print()
-    print(f"Analytical Forward Time:    {t_ana:.3f} ms")
-    print(f"Monte Carlo Forward Time:   {t_mc:.3f} ms")
-    print(f"P.R.A.M.A.N.A. Speedup:     {speedup:.1f}x FASTER!")
-    print("\n[Proof Confirmed]: Exact algebraic moments match 100,000 empirical samples with zero sampling overhead!")
+    print(f"Affine Analytical Mean:         {mu_ana[0]}")
+    print(f"Affine Monte Carlo Mean:        {mu_mc[0]} (Max Abs Diff: {mean_err:.6f})")
+    print(f"Affine Analytical Variance:     {var_ana[0]}")
+    print(f"Affine Monte Carlo Variance:    {var_mc[0]} (Max Abs Diff: {var_err:.6f})")
+    print(f"Tanh Delta-Method Rel Error:    {tanh_rel_err:.2f}% (at input std=0.10)")
+    print(f"Analytical Time: {t_ana:.3f} ms vs Monte Carlo (N=100k): {t_mc:.3f} ms ({speedup:.1f}x faster)")
 
 
 def demo_ood_hallucination_detection():
-    print_banner("EXPERIMENT 2: Epistemic Hallucination & Out-Of-Distribution (OOD) Detection")
-    print("Conventional neural nets produce highly confident yet false predictions on OOD inputs.")
-    print("P.R.A.M.A.N.A. tracks variance explosion: uncertainty scales with distance from training domain.\n")
+    print_banner("EXPERIMENT 2: Trained Weight Uncertainty & Out-Of-Distribution (OOD) Detection")
+    print("Training a DistributionalLinear layer with learnable weight variance on in-distribution data,")
+    print("then evaluating epistemic variance growth as inputs move far outside the training support.\n")
 
     np.random.seed(42)
-    # Network with Bayesian weight uncertainty
-    layer = DistributionalLinear(2, 1, weight_uncertainty=True)
+    layer = DistributionalLinear(2, 1, weight_uncertainty=True, init_log_var=-3.5)
+    loss_fn = GaussianNLLLoss()
+    optimizer = Adam(layer.parameters(), lr=0.04)
 
-    # In-distribution inputs (calibrated close to origin)
-    x_in_dist = DistributionalTensor([[0.2, -0.3], [0.5, 0.1]], [[0.01, 0.01], [0.01, 0.01]])
+    # Train on in-distribution data near origin: x in [-0.5, 0.5]
+    x_train_np = np.random.uniform(-0.5, 0.5, size=(64, 2))
+    y_train_np = (1.5 * x_train_np[:, 0:1] - 0.8 * x_train_np[:, 1:2]) + np.random.normal(0.0, 0.08, size=(64, 1))
+    x_train = DistributionalTensor(x_train_np, np.full_like(x_train_np, 0.002))
+    y_train = Tensor(y_train_np)
+
+    for _ in range(50):
+        optimizer.zero_grad()
+        pred = layer(x_train)
+        loss = loss_fn(pred, y_train)
+        loss.backward()
+        optimizer.step()
+
+    # Evaluate calibrated layer on In-Distribution vs Mild OOD vs Extreme OOD
+    x_in_dist = DistributionalTensor([[0.2, -0.3], [0.4, 0.1]], [[0.002, 0.002], [0.002, 0.002]])
     out_in = layer(x_in_dist)
 
-    # Mildly anomalous input
-    x_mild_ood = DistributionalTensor([[3.5, -4.0]], [[0.01, 0.01]])
+    x_mild_ood = DistributionalTensor([[3.5, -4.0]], [[0.002, 0.002]])
     out_mild = layer(x_mild_ood)
 
-    # Extreme Out-of-Distribution input (adversarial / hallucination trigger)
-    x_extreme_ood = DistributionalTensor([[25.0, -30.0]], [[0.01, 0.01]])
+    x_extreme_ood = DistributionalTensor([[15.0, -20.0]], [[0.002, 0.002]])
     out_extreme = layer(x_extreme_ood)
 
     var_in_avg = float(np.mean(out_in.var.numpy()))
     var_mild = float(np.mean(out_mild.var.numpy()))
     var_extreme = float(np.mean(out_extreme.var.numpy()))
 
-    print(f"{'Input Type':<25} | {'Mean Prediction':<18} | {'Epistemic Uncertainty (Var)':<28} | {'Status'}")
-    print("-" * 85)
-    print(f"{'In-Distribution (x~0)':<25} | {out_in.mean.numpy()[0,0]:<18.4f} | {var_in_avg:<28.6f} | CONFIDENT")
-    print(f"{'Mild OOD (x~4)':<25} | {out_mild.mean.numpy()[0,0]:<18.4f} | {var_mild:<28.6f} | CAUTION")
-    print(f"{'Extreme OOD (x~30)':<25} | {out_extreme.mean.numpy()[0,0]:<18.4f} | {var_extreme:<28.6f} | REJECT (HALLUCINATION)")
-    print("-" * 85)
+    print(f"{'Input Regime':<25} | {'Mean Prediction':<18} | {'Predictive Variance':<24} | {'Status'}")
+    print("-" * 82)
+    print(f"{'In-Distribution (|x|<=0.5)':<25} | {out_in.mean.numpy()[0,0]:<18.4f} | {var_in_avg:<24.6f} | IN-SUPPORT")
+    print(f"{'Mild OOD (|x|~4)':<25} | {out_mild.mean.numpy()[0,0]:<18.4f} | {var_mild:<24.6f} | ELEVATED UNCERTAINTY")
+    print(f"{'Extreme OOD (|x|~20)':<25} | {out_extreme.mean.numpy()[0,0]:<18.4f} | {var_extreme:<24.6f} | HIGH OOD UNCERTAINTY")
+    print("-" * 82)
 
     ratio = var_extreme / max(var_in_avg, 1e-9)
-    print(f"\nUncertainty Explosion Factor: {ratio:.1f}x higher variance on OOD input!")
-    print("[Safety Guarantee]: P.R.A.M.A.N.A. flags hallucinations autonomously before outputs are trusted.")
+    print(f"\nOOD Predictive Variance Ratio: {ratio:.1f}x higher variance on extreme OOD input.")
 
 
 def demo_heteroscedastic_learning():
-    print_banner("EXPERIMENT 3: Heteroscedastic Noise Learning via Gaussian NLL Dual Autograd")
-    print("Standard MSE loss assumes constant homoscedastic noise: Loss = (y - f(x))^2.")
-    print("Gaussian NLL dynamically learns input-dependent heteroscedastic noise: y ~ N(mu(x), sigma^2(x)).\n")
+    print_banner("EXPERIMENT 3: Input-Dependent Heteroscedastic Noise Learning via Gaussian NLL")
+    print("Dataset: y = 2*x + 0.5 + eps(x), where noise std grows with |x|: sigma(x) = 0.2 + 0.5*|x|.")
+    print("True variance sigma^2(x) varies from 0.04 at x=0.0 up to 1.44 at |x|=2.0.\n")
 
     np.random.seed(42)
-    # Generate synthetic heteroscedastic dataset: y = 2*x + 0.5 + noise(x)
-    # Noise variance increases with |x|: sigma^2(x) = (0.2 + 0.5 * |x|)^2
-    n_pts = 100
-    x_raw = np.random.uniform(-2.0, 2.0, size=(n_pts, 1)).astype(np.float64)
+    n_pts = 200
+    x_raw = np.linspace(-2.0, 2.0, n_pts).reshape(-1, 1).astype(np.float64)
     true_sigma = 0.2 + 0.5 * np.abs(x_raw)
     noise = np.random.normal(0.0, true_sigma)
     y_raw = 2.0 * x_raw + 0.5 + noise
@@ -148,58 +156,65 @@ def demo_heteroscedastic_learning():
     x_tensor = Tensor(x_raw)
     y_tensor = Tensor(y_raw)
 
-    # Model predicting both mean and variance
-    # First layer outputs hidden features, second layer outputs [mu, var]
-    model = DistributionalSequential([
-        DistributionalLinear(1, 8, bias=True),
-        DistributionalLinear(8, 1, bias=True),
-    ])
+    # Non-linear dual-head HeteroscedasticMLP predicting input-dependent mu(x) and sigma^2(x)
+    model = HeteroscedasticMLP(in_features=1, hidden_features=24, out_features=1)
 
     loss_fn = GaussianNLLLoss()
-    optimizer = Adam(model.parameters(), lr=0.05)
+    optimizer = Adam(model.parameters(), lr=0.03)
 
-    print(f"Training Distributional Model on {n_pts} heteroscedastic samples for 60 epochs...")
-    print(f"{'Epoch':<8} | {'NLL Loss':<12} | {'Avg Predicted Var':<20} | {'True Empirical Var'}")
-    print("-" * 65)
+    true_mean_var = float(np.mean(true_sigma ** 2))
+    print(f"Training HeteroscedasticMLP on {n_pts} samples for 150 epochs...")
+    print(f"{'Epoch':<8} | {'NLL Loss':<12} | {'Mean Pred Var':<18} | {'True Mean Var'}")
+    print("-" * 62)
 
-    emp_var_all = float(np.var(noise))
-
-    for epoch in range(1, 61):
+    for epoch in range(1, 151):
         optimizer.zero_grad()
-
-        # Forward pass through distributional model
-        x_dist = DistributionalTensor(x_tensor, Tensor(np.full_like(x_raw, 0.01)))
+        x_dist = DistributionalTensor(x_tensor, Tensor(np.full_like(x_raw, 0.001)))
         out_dist = model(x_dist)
 
         loss = loss_fn(out_dist, y_tensor)
         loss.backward()
         optimizer.step()
 
-        if epoch % 15 == 0 or epoch == 1:
+        if epoch % 30 == 0 or epoch == 1:
             pred_var_avg = float(np.mean(out_dist.var.numpy()))
-            print(f"{epoch:<8} | {loss.item():<12.4f} | {pred_var_avg:<20.4f} | {emp_var_all:.4f}")
+            print(f"{epoch:<8} | {loss.item():<12.4f} | {pred_var_avg:<18.4f} | {true_mean_var:.4f}")
+
+    # Verify x-dependent variance profile across specific query points
+    probe_x = np.array([[-2.0], [-1.0], [0.0], [1.0], [2.0]], dtype=np.float64)
+    probe_out = model(DistributionalTensor(probe_x, np.full_like(probe_x, 0.001)))
+    probe_mu, probe_var = probe_out.numpy()
+    true_probe_var = (0.2 + 0.5 * np.abs(probe_x)) ** 2
+
+    print("\nLearned Input-Dependent Variance Profile across x:")
+    print(f"{'x':<8} | {'Pred Mean mu(x)':<18} | {'True Mean':<12} | {'Pred Var sigma^2(x)':<22} | {'True Var sigma^2(x)'}")
+    print("-" * 82)
+    for i in range(len(probe_x)):
+        xv = probe_x[i, 0]
+        print(
+            f"{xv:<8.1f} | {probe_mu[i, 0]:<18.4f} | {2.0 * xv + 0.5:<12.4f} | "
+            f"{probe_var[i, 0]:<22.4f} | {true_probe_var[i, 0]:.4f}"
+        )
+    print("-" * 82)
 
     # Compute uncertainty telemetry
-    x_in_eval = DistributionalTensor(Tensor(x_raw[:20]), Tensor(np.full_like(x_raw[:20], 0.05)))
+    x_in_eval = DistributionalTensor(Tensor(x_raw), Tensor(np.full_like(x_raw, 0.001)))
     x_ood_eval = DistributionalTensor(
-        Tensor(np.random.uniform(10.0, 15.0, size=(20, 1))),
-        Tensor(np.full((20, 1), 0.5)),
+        Tensor(np.random.uniform(6.0, 10.0, size=(40, 1))),
+        Tensor(np.full((40, 1), 0.25)),
     )
     telem = PRAMANA.evaluate_uncertainty_telemetry(
         model,
         in_dist_data=x_in_eval,
         out_dist_data=x_ood_eval,
-        targets=Tensor(y_raw[:20]),
+        targets=y_tensor,
     )
     print(f"\n{telem.summary()}")
-
-    print("\n[Proof Confirmed]: Dual autograd successfully optimized Gaussian NLL!")
-    print("The model calibrated its variance to capture the data's heteroscedastic noise envelope.")
 
 
 def main():
     print("=" * 75)
-    print("              miniGrad Innovation 3: P.R.A.M.A.N.A. Showcase")
+    print("              miniGrad P.R.A.M.A.N.A. Uncertainty Showcase")
     print("   Probabilistic Representation of Analytical Moments & Algebraic Noise-aware Autograd")
     print("=" * 75)
 
@@ -214,3 +229,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

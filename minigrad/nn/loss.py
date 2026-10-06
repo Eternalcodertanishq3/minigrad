@@ -8,6 +8,8 @@ All losses return a scalar Tensor that can be backpropagated through.
 """
 from __future__ import annotations
 
+import weakref
+
 import numpy as np
 
 from minigrad.nn.module import Module
@@ -70,7 +72,7 @@ class CrossEntropyLoss(Module):
             raise ValueError(f"reduction must be 'mean' or 'sum', got '{reduction}'")
         self.reduction = reduction
 
-    def forward(self, logits: Tensor, targets: np.ndarray) -> Tensor:
+    def forward(self, logits: Tensor, targets: np.ndarray | Tensor) -> Tensor:
         """
         Args:
             logits: Raw model outputs, shape (N, num_classes)
@@ -78,6 +80,7 @@ class CrossEntropyLoss(Module):
         Returns:
             Scalar loss tensor
         """
+        t_idx = targets.data.astype(np.intp) if isinstance(targets, Tensor) else np.asarray(targets, dtype=np.intp)
         N = logits.data.shape[0]
 
         # Exact LogSumExp: log(sum(exp(x))) = max_x + log(sum(exp(x - max_x)))
@@ -86,7 +89,7 @@ class CrossEntropyLoss(Module):
         sum_exp = np.sum(exp_shifted, axis=1, keepdims=True)
         log_sum_exp = max_logits + np.log(sum_exp)
         log_probs = logits.data - log_sum_exp
-        correct_logprobs = -log_probs[np.arange(N), targets]
+        correct_logprobs = -log_probs[np.arange(N), t_idx]
 
         if self.reduction == "mean":
             loss_val = correct_logprobs.mean()
@@ -99,21 +102,28 @@ class CrossEntropyLoss(Module):
             requires_grad=logits.requires_grad,
             _children=(logits,),
             _op="cross_entropy",
+            _ctx=(t_idx, self.reduction),
         )
 
-        def _backward() -> None:
-            if logits.requires_grad:
-                probs = np.exp(log_probs)
-                grad = probs.copy()
-                grad[np.arange(N), targets] -= 1.0
-                if self.reduction == "mean":
-                    grad = grad / N
-                dx = grad * result.grad
-                if isinstance(dx, np.ndarray) and dx.dtype != logits.dtype:
-                    dx = dx.astype(logits.dtype)
-                logits.grad += dx
+        if result.requires_grad:
+            res_ref = weakref.ref(result)
 
-        result._backward = _backward
+            def _backward() -> None:
+                res = res_ref()
+                if res is None:
+                    return
+                if logits.requires_grad:
+                    probs = np.exp(log_probs)
+                    grad = probs.copy()
+                    grad[np.arange(N), t_idx] -= 1.0
+                    if self.reduction == "mean":
+                        grad = grad / N
+                    dx = grad * res.grad
+                    if isinstance(dx, np.ndarray) and dx.dtype != logits.dtype:
+                        dx = dx.astype(logits.dtype)
+                    logits.grad += dx
+
+            result._backward = _backward
         return result
 
     def __repr__(self) -> str:
@@ -156,17 +166,23 @@ class BCELoss(Module):
             loss_val = loss_per_elem.sum()
 
         result = Tensor(loss_val, requires_grad=pred.requires_grad,
-                       _children=(pred,), _op="bce")
+                       _children=(pred,), _op="bce", _ctx=(t, self.reduction, self.eps))
 
-        def _backward() -> None:
-            if pred.requires_grad:
-                # dL/dp = -(t/p - (1-t)/(1-p))
-                grad = -(t / p - (1.0 - t) / (1.0 - p))
-                if self.reduction == "mean":
-                    grad = grad / loss_per_elem.size
-                pred.grad += grad * result.grad
+        if result.requires_grad:
+            res_ref = weakref.ref(result)
 
-        result._backward = _backward
+            def _backward() -> None:
+                res = res_ref()
+                if res is None:
+                    return
+                if pred.requires_grad:
+                    # dL/dp = -(t/p - (1-t)/(1-p))
+                    grad = -(t / p - (1.0 - t) / (1.0 - p))
+                    if self.reduction == "mean":
+                        grad = grad / loss_per_elem.size
+                    pred.grad += grad * res.grad
+
+            result._backward = _backward
         return result
 
     def __repr__(self) -> str:
@@ -205,18 +221,24 @@ class BCEWithLogitsLoss(Module):
             loss_val = loss_per_elem.sum()
 
         result = Tensor(loss_val, requires_grad=logits.requires_grad,
-                       _children=(logits,), _op="bce_with_logits")
+                       _children=(logits,), _op="bce_with_logits", _ctx=(t, self.reduction))
 
-        def _backward() -> None:
-            if logits.requires_grad:
-                # sigmoid(z) - t
-                sigmoid_z = 1.0 / (1.0 + np.exp(-z))
-                grad = sigmoid_z - t
-                if self.reduction == "mean":
-                    grad = grad / loss_per_elem.size
-                logits.grad += grad * result.grad
+        if result.requires_grad:
+            res_ref = weakref.ref(result)
 
-        result._backward = _backward
+            def _backward() -> None:
+                res = res_ref()
+                if res is None:
+                    return
+                if logits.requires_grad:
+                    # sigmoid(z) - t
+                    sigmoid_z = 1.0 / (1.0 + np.exp(-z))
+                    grad = sigmoid_z - t
+                    if self.reduction == "mean":
+                        grad = grad / loss_per_elem.size
+                    logits.grad += grad * res.grad
+
+            result._backward = _backward
         return result
 
     def __repr__(self) -> str:
@@ -252,17 +274,23 @@ class NLLLoss(Module):
             loss_val = correct_logprobs.sum()
 
         result = Tensor(loss_val, requires_grad=log_probs.requires_grad,
-                       _children=(log_probs,), _op="nll")
+                       _children=(log_probs,), _op="nll", _ctx=(targets, self.reduction))
 
-        def _backward() -> None:
-            if log_probs.requires_grad:
-                grad = np.zeros_like(log_probs.data)
-                grad[np.arange(N), targets] = -1.0
-                if self.reduction == "mean":
-                    grad = grad / N
-                log_probs.grad += grad * result.grad
+        if result.requires_grad:
+            res_ref = weakref.ref(result)
 
-        result._backward = _backward
+            def _backward() -> None:
+                res = res_ref()
+                if res is None:
+                    return
+                if log_probs.requires_grad:
+                    grad = np.zeros_like(log_probs.data)
+                    grad[np.arange(N), targets] = -1.0
+                    if self.reduction == "mean":
+                        grad = grad / N
+                    log_probs.grad += grad * res.grad
+
+            result._backward = _backward
         return result
 
     def __repr__(self) -> str:

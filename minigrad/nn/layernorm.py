@@ -10,6 +10,8 @@ Reference: "Layer Normalization" (Ba, Kiros & Hinton, 2016)
 """
 from __future__ import annotations
 
+import weakref
+
 import numpy as np
 
 from minigrad.nn.module import Module
@@ -58,33 +60,39 @@ class LayerNorm(Module):
 
         requires_grad = x.requires_grad or self.gamma.requires_grad or self.beta.requires_grad
         result = Tensor(out_data, requires_grad=requires_grad,
-                       _children=(x, self.gamma, self.beta), _op="layer_norm")
+                       _children=(x, self.gamma, self.beta), _op="layer_norm", _ctx=(axes, self.eps))
 
-        def _backward() -> None:
-            N = 1
-            for a in axes:
-                N *= x.data.shape[a]
-            std_inv = 1.0 / np.sqrt(var + self.eps)
+        if result.requires_grad:
+            res_ref = weakref.ref(result)
 
-            if self.gamma.requires_grad:
-                self.gamma.grad += (result.grad * x_normalized).sum(
-                    axis=tuple(range(x.data.ndim - ndim)), keepdims=False
-                ) if x.data.ndim > ndim else (result.grad * x_normalized)
+            def _backward() -> None:
+                res = res_ref()
+                if res is None:
+                    return
+                N = 1
+                for a in axes:
+                    N *= x.data.shape[a]
+                std_inv = 1.0 / np.sqrt(var + self.eps)
 
-            if self.beta.requires_grad:
-                self.beta.grad += result.grad.sum(
-                    axis=tuple(range(x.data.ndim - ndim)), keepdims=False
-                ) if x.data.ndim > ndim else result.grad
+                if self.gamma.requires_grad:
+                    self.gamma.grad += (res.grad * x_normalized).sum(
+                        axis=tuple(range(x.data.ndim - ndim)), keepdims=False
+                    ) if x.data.ndim > ndim else (res.grad * x_normalized)
 
-            if x.requires_grad:
-                dx_normalized = result.grad * self.gamma.data
-                dx_var = (dx_normalized * (x.data - mean) * -0.5 * std_inv**3).sum(axis=axes, keepdims=True)
-                dx_mean = (dx_normalized * -std_inv).sum(axis=axes, keepdims=True)
-                dx_var_term = 2.0 * (x.data - mean) / N * dx_var
-                dx = dx_normalized * std_inv + dx_var_term + dx_mean / N
-                x.grad += dx
+                if self.beta.requires_grad:
+                    self.beta.grad += res.grad.sum(
+                        axis=tuple(range(x.data.ndim - ndim)), keepdims=False
+                    ) if x.data.ndim > ndim else res.grad
 
-        result._backward = _backward
+                if x.requires_grad:
+                    dx_normalized = res.grad * self.gamma.data
+                    dx_var = (dx_normalized * (x.data - mean) * -0.5 * std_inv**3).sum(axis=axes, keepdims=True)
+                    dx_mean = (dx_normalized * -std_inv).sum(axis=axes, keepdims=True)
+                    dx_var_term = 2.0 * (x.data - mean) / N * dx_var
+                    dx = dx_normalized * std_inv + dx_var_term + dx_mean / N
+                    x.grad += dx
+
+            result._backward = _backward
         return result
 
     def __repr__(self) -> str:

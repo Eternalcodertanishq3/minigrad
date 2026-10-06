@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/Eternalcodertanishq3/minigrad/actions/workflows/ci.yml/badge.svg)](https://github.com/Eternalcodertanishq3/minigrad/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/minigrad-framework.svg?color=blue)](https://pypi.org/project/minigrad-framework/)
-[![Tests](https://img.shields.io/badge/tests-484%20collected%20%7C%20446%20zero--dep-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-495%20collected%20%7C%20457%20zero--dep-brightgreen.svg)](tests/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-pure%20numpy-red.svg)](pyproject.toml)
@@ -27,7 +27,7 @@ Most autograd engines in the open-source ecosystem fall into one of two camps:
 1. **Toy educational clones** (like `micrograd`) that can only handle basic scalar operations or small toy MLPs.
 2. **Framework wrappers** that inherit PyTorch's fundamental assumptions: *"Everything is a dense tensor, layers must be discrete, activations must consume $\mathcal{O}(L)$ RAM, and numbers are deterministic with zero knowledge of their own doubt."*
 
-**miniGrad is built from mathematical first principles with zero external dependencies.** It implements full reverse-mode automatic differentiation, modern transformers (miniGPT, LoRA), higher-order Hessians (PINNs), and extends deep learning into **frontier scientific computing paradigms** that even mainstream frameworks cannot do out-of-the-box.
+**miniGrad is built from mathematical first principles with zero external dependencies.** It implements full reverse-mode automatic differentiation, modern transformers (miniGPT, LoRA), higher-order Hessians (PINNs), and reference implementations of **five scientific computing paradigms** in readable, type-checked Python.
 
 ---
 
@@ -36,10 +36,10 @@ Most autograd engines in the open-source ecosystem fall into one of two camps:
 ```
                                   THE MINIGRAD UNIFIED ENGINE
   
-  LAYER 3: THE 5 FRONTIER INNOVATIONS (Post-PyTorch First-Principles Paradigms)
-  ├── S.U.T.R.A.    : Continuous-Depth Neural ODEs (O(1) Memory Pontryagin Adjoint Autograd)
+  LAYER 3: THE 5 FRONTIER INNOVATIONS (Reference Scientific Computing Paradigms)
+  ├── S.U.T.R.A.    : Continuous-Depth Neural ODEs (O(1) Graph-Node Pontryagin Adjoint Autograd)
   ├── A.V.Y.A.Y.A.  : Reversible Computing (Zero Forward Caching, O(1) Activation RAM for 500 Layers)
-  ├── P.R.A.M.A.N.A.: Distributional Uncertainty Tensors (Single-Pass Analytical Moment Autograd)
+  ├── P.R.A.M.A.N.A.: Distributional Uncertainty Tensors (Exact Affine + Delta-Method Moment Autograd)
   ├── T.A.R.K.A.    : Neuro-Symbolic Differentiable Logic (Continuous t-Norms & Axiomatic Semantic Loss)
   └── S.P.A.N.D.A.  : Neuromorphic Event-Driven SNNs (LIF Dynamics & Surrogate-Gradient BPTT)
   
@@ -60,22 +60,22 @@ Most autograd engines in the open-source ecosystem fall into one of two camps:
 
 ## 🚦 Component Maturity & Status Matrix
 
-miniGrad maintains explicit maturity boundaries between verified production-grade subsystems and frontier research prototypes:
+miniGrad maintains explicit maturity boundaries between verified core subsystems and research prototypes:
 
 | Subsystem | Module | Maturity | Verification & Test Coverage |
 | :--- | :--- | :---: | :--- |
-| **Core Autograd DAG** | `minigrad.tensor`, `minigrad.autograd` | **Stable** | Exact mathematical differentiation, lifecycle state machine (`LIVE`/`FREED`), multi-consumer shared subgraphs, higher-order derivatives (`create_graph=True`). |
-| **Glass-Box Telemetry** | `minigrad.glassbox` | **Stable** | Root-cause first-NaN diagnosis, gradient anomaly detection, interactive ASCII DAG visualization. |
+| **Core Autograd DAG** | `minigrad.tensor`, `minigrad.autograd` | **Stable** | Exact mathematical differentiation, iterative topological sort, reference-cycle-free `LIVE`/`FREED` lifecycle, 1D/2D/3D+ batched `matmul`, higher-order derivatives (`create_graph=True` across core ops, `gelu`, `einsum`, `split`, `layer_norm`, `embedding`, and losses). |
+| **Glass-Box Telemetry** | `minigrad.glassbox` | **Stable** | Forward & backward first-NaN/Inf diagnosis with call-stack snapshot attribution, interactive ASCII DAG visualization. |
 | **Neural Layers & Optimizers** | `minigrad.nn`, `minigrad.optim` | **Stable** | Linear, Conv2D, BatchNorm1D/2D, LayerNorm, Dropout, MultiHeadAttention, SGD, Adam, AdamW, RMSprop with PyTorch parity. |
 | **Symbolic Graph Optimizer** | `minigrad.graph_opt` | **Hardened** | 100-DAG property-based randomized stress testing, canonical reconstructor registry, 3-layer differential validation, algebraic folding, kernel fusion. |
-| **Embedded C Compiler** | `minigrad.compiler` | **Hardened** | 3-way differential validation (Python == FP32 C ≈ INT8 C), static memory arena interval reuse, zero runtime dynamic allocations. |
+| **Embedded C Compiler** | `minigrad.compiler` | **Hardened** | Compiles feed-forward/elementwise DAGs (`Linear`, `MatMul`, `Add`, `Mul`, `ReLU`, `Sigmoid`, `Tanh`, `GELU`, `Sin`, `Cos`, `Abs`, `Exp`, `Log`, `Softmax`, `LayerNorm`, `RMSNorm`) with 3-way differential validation (Python == FP32 C ≈ INT8 C) and static arena reuse. |
 | **SafeTensors Serialization** | `minigrad.safetensors` | **Stable** | Option B mmap-assisted loading with owned numpy array copies, bfloat16 parsing, HuggingFace format interoperability. |
-| **Functional vmap & DP-SGD** | `minigrad.vmap`, `minigrad.dp` | **Experimental** | Batched Jacobian transforms, per-sample gradient clipping, Rényi differential privacy accounting. |
-| **S.U.T.R.A. (Neural ODEs)** | `minigrad.sutra` | **Research** | Pontryagin continuous adjoint sensitivity, adaptive step Runge-Kutta Dormand-Prince (dopri5) integrator. |
-| **A.V.Y.A.Y.A. (Reversible Nets)** | `minigrad.avyaya` | **Research** | Bipartite additive coupling, reverse reconstruction for memory-efficient forward passes. |
-| **P.R.A.M.A.N.A. (Distributional)**| `minigrad.pramana` | **Research** | Analytical first/second-order moment propagation and epistemic variance tracking. |
-| **T.A.R.K.A. (Neuro-Symbolic)** | `minigrad.tarka` | **Research** | Continuous t-norms (Product, Łukasiewicz, Gödel) and differentiable semantic loss. |
-| **S.P.A.N.D.A. (Neuromorphic SNN)**| `minigrad.spanda` | **Research** | Leaky Integrate-and-Fire (LIF) temporal dynamics with surrogate gradient backpropagation. |
+| **Functional vmap & DP-SGD** | `minigrad.vmap`, `minigrad.dp` | **Experimental** | Ergonomic slice-mapped per-sample gradient/Jacobian transforms, per-sample gradient clipping, Rényi differential privacy accounting. |
+| **S.U.T.R.A. (Neural ODEs)** | `minigrad.sutra` | **Research** | Pontryagin continuous adjoint sensitivity, unrolled trajectory differentiation, adaptive step Dormand-Prince (`dopri5`) integrator with strict `max_steps` bounds. |
+| **A.V.Y.A.Y.A. (Reversible Nets)** | `minigrad.avyaya` | **Research** | Bipartite additive coupling (`RevNet`), reverse reconstruction with $\mathcal{O}(1)$ live forward activations and measured memory telemetry. |
+| **P.R.A.M.A.N.A. (Distributional)**| `minigrad.pramana` | **Research** | Exact affine/bilinear moment propagation, first-order Taylor (delta-method) non-linear variance approximations, and `HeteroscedasticMLP`. |
+| **T.A.R.K.A. (Neuro-Symbolic)** | `minigrad.tarka` | **Research** | Continuous t-norms (`Product`, `Lukasiewicz`, `Godel` with exact Gödel residuum) and differentiable semantic loss. |
+| **S.P.A.N.D.A. (Neuromorphic SNN)**| `minigrad.spanda` | **Research** | Leaky Integrate-and-Fire (`LIFCell`) temporal dynamics with surrogate gradient BPTT and single-pass ANN vs. $T$-step SNN SynOps profiling. |
 
 ---
 
@@ -84,7 +84,7 @@ miniGrad maintains explicit maturity boundaries between verified production-grad
 | Capability / Metric | `miniGrad` | `PyTorch` | `micrograd` / `tinygrad` |
 | :--- | :---: | :---: | :---: |
 | **Dependencies** | **Zero (Pure NumPy)** | ~2.5 GB C++/CUDA binaries | Pure Python / minimal C |
-| **Full Test Suite Speed** | **479 tests collected (441 zero-dep CI + 38 parity) in ~20s** | Minutes / Hours | Few dozen tests |
+| **Full Test Suite** | **495 tests collected (457 zero-dep CI + 38 parity)** | Minutes / Hours | Few dozen tests |
 | **Glass-Box Root-Cause NaN Debugger** | **Native Built-in** | `detect_anomaly` (slow) | ❌ None |
 | **Zero-Runtime C Code Generator** | **Native (`export_c`)** | TorchScript / ExecuTorch | TinyGrad has C-gen |
 | **Symbolic Graph Optimization & Fusion** | **Native Built-in** | TorchDynamo / Inductor | TinyGrad has fusion |
@@ -152,9 +152,9 @@ optimizer.step()
 
 ### 1. S.U.T.R.A. (Continuous-Depth Neural ODEs)
 *Sanskrit: सूत्र (Thread / Continuous Continuity)*  
-**Spike-Propagation / Continuous Neural Dynamics with $\mathcal{O}(1)$ Pontryagin Adjoint Autograd.**
+**Symbolic-Unified Trajectory & Continuous-Time Residual Autograd with $\mathcal{O}(1)$ Pontryagin Adjoint Graph.**
 
-Instead of stacking discrete layers ($L_1 \to L_2 \to L_3$), S.U.T.R.A. models hidden state evolution as a continuous differential equation:
+Instead of stacking discrete layers ($L_1 \to L_2 \to L_3$), S.U.T.R.A. models hidden state evolution as a continuous differential equation (following Chen et al., 2018):
 $$\frac{dz}{dt} = f_\theta(z(t), t)$$
 By solving the continuous adjoint state $a(t) = \frac{\partial \mathcal{L}}{\partial z(t)}$ in reverse time, the Pontryagin Adjoint formulation maintains an $\mathcal{O}(1)$ computation graph node count invariant with respect to ODE integration steps (eliminating the $\mathcal{O}(N_{\text{steps}})$ autograd graph node explosion of discrete unrolling).
 
@@ -164,12 +164,12 @@ from minigrad.nn import Sequential, Linear, Tanh
 
 # Define continuous vector field dz/dt = f(z, t)
 func = Sequential([Linear(2, 32), Tanh(), Linear(32, 2)])
-ode_model = NeuralODE(func, t0=0.0, t1=1.0, solver="dopri5", rtol=1e-4, atol=1e-5)
+ode_model = NeuralODE(func, t_span=(0.0, 1.0), solver="dopri5", rtol=1e-4, atol=1e-5)
 
 # Forward continuous integration
 z_final = ode_model(Tensor(z0))
 
-# O(1) memory backward pass via Pontryagin Adjoint
+# O(1) graph-node backward pass via Pontryagin Adjoint
 loss = z_final.sum()
 loss.backward()
 ```
@@ -181,11 +181,11 @@ loss.backward()
 *Sanskrit: अव्यय (Imperishable / Information-Lossless)*  
 **Adaptive Volume-preserving Yield-lossless Activation-inverting Y-reconstruction Autograd.**
 
-Standard deep networks cache every intermediate activation in RAM, causing an $\mathcal{O}(L \times B \times D)$ memory explosion. A.V.Y.A.Y.A. uses bipartite additive coupling blocks:
+Standard deep networks cache every intermediate activation in RAM, causing an $\mathcal{O}(L \times B \times D)$ memory growth. A.V.Y.A.Y.A. implements bipartite additive coupling blocks (Gomez et al., 2017 / RevNet):
 $$y_1 = x_1 + f(x_2), \quad y_2 = x_2 + g(y_1)$$
-Which are analytically invertible to **machine precision ($2.77 \times 10^{-16}$ error)**:
+Which are algebraically invertible:
 $$x_2 = y_2 - g(y_1), \quad x_1 = y_1 - f(x_2)$$
-Reversible coupling eliminates intermediate forward activation nodes in the autograd DAG. Forward passes discard intermediate activations; the backward pass dynamically reconstructs inputs on the fly, maintaining an $\mathcal{O}(1)$ activation node graph invariant regardless of network depth and enabling deep reversible networks to train with minimal activation memory footprint.
+Single-block reconstruction achieves **machine precision ($\sim 2.8 \times 10^{-16}$ error)**, with cumulative IEEE-754 floating-point drift of $\sim 10^{-5}$ across 500 unrolled layers. Forward passes discard intermediate activations, and the backward pass dynamically reconstructs inputs on the fly—maintaining $\mathcal{O}(1)$ live activation tensors regardless of network depth.
 
 ```python
 from minigrad import AVYAYA, ReversibleBlock, ReversibleSequential, Tensor
@@ -201,7 +201,7 @@ model = ReversibleSequential(layers)
 
 out = model(Tensor(x_input))
 loss = out.sum()
-loss.backward()  # Dynamic backward reconstruction: O(1) memory!
+loss.backward()  # Dynamic backward reconstruction: O(1) live activations!
 ```
 *Run showcase:* `python examples/13_avyaya_reversible_computing.py`
 
@@ -211,25 +211,24 @@ loss.backward()  # Dynamic backward reconstruction: O(1) memory!
 *Sanskrit: प्रमाण (Valid Means of Genuine Knowledge)*  
 **Probabilistic Representation of Analytical Moments & Algebraic Noise-aware Autograd.**
 
-Standard neural networks output uncalibrated point estimates and confidently hallucinate on out-of-distribution inputs. P.R.A.M.A.N.A. introduces a dual-stream computational graph tracking both expectation $\mathbb{E}[X] = \mu$ and variance $\mathrm{Var}[X] = \sigma^2$ through closed-form Goodman product algebra for bilinear terms and Taylor-series analytical approximations through non-linearities:
-$$\sigma_{XY}^2 = \mu_X^2 \sigma_Y^2 + \mu_Y^2 \sigma_X^2 + \sigma_X^2 \sigma_Y^2$$
-Moment propagation uses analytical Taylor approximations through non-linearities, validated against empirical Monte Carlo estimates ($< 0.05\%$ discrepancy on benchmark distributions) while executing in a single analytical forward pass. Automatically detects out-of-distribution inputs via epistemic variance spikes.
+Standard neural networks output uncalibrated point estimates. P.R.A.M.A.N.A. introduces a dual-stream computational graph tracking both expectation $\mathbb{E}[X] = \mu$ and variance $\mathrm{Var}[X] = \sigma^2$:
+* **Exact Affine & Independent Bilinear Propagation:** Linear/affine transformations ($\mathbf{y} = \mathbf{x}\mathbf{W}^T + \mathbf{b}$) and independent elementwise products propagate exact analytical moments via Goodman's (1960) identity:
+  $$\sigma_{XY}^2 = \mu_X^2 \sigma_Y^2 + \mu_Y^2 \sigma_X^2 + \sigma_X^2 \sigma_Y^2$$
+* **First-Order Taylor (Delta-Method) Non-Linearities:** Non-linear activations (`relu`, `sigmoid`, `tanh`, `gelu`, `exp`, `log`) propagate diagonal variance via first-order Taylor expansion ($\sigma_y^2 \approx [f'(\mu_x)]^2 \sigma_x^2$), which is accurate in the small-noise regime ($\sigma \le 0.1$) and ignores off-diagonal inter-unit covariances.
+* **Heteroscedastic Noise Learning (`HeteroscedasticMLP`):** Dual-headed non-linear architecture trained with `GaussianNLLLoss` to learn input-dependent aleatoric variance $\sigma^2(x)$ alongside predictive mean $\mu(x)$.
 
 ```python
-from minigrad import PRAMANA, DistributionalTensor, DistributionalLinear, GaussianNLLLoss
+from minigrad import PRAMANA, DistributionalTensor, DistributionalLinear, HeteroscedasticMLP, GaussianNLLLoss
 
-# Input with known epistemic noise
+# 1. Single-pass analytical moment propagation through uncertain linear layer
 x_dist = DistributionalTensor(mean=x_data, var=var_data)
-layer = DistributionalLinear(in_features=4, out_features=1, bias=True)
-
-# Single-pass moment propagation: computes both prediction and calibrated doubt
+layer = DistributionalLinear(in_features=4, out_features=1, bias=True, weight_var_init=1e-3)
 out_dist = layer(x_dist)
-print("Mean:", out_dist.mean.numpy())
-print("Epistemic Variance:", out_dist.var.numpy())
 
-# Heteroscedastic maximum likelihood training
-criterion = GaussianNLLLoss()
-loss = criterion(out_dist, target_y)
+# 2. Input-dependent heteroscedastic variance learning via Gaussian NLL
+het_model = HeteroscedasticMLP(in_features=1, hidden_features=16, out_features=1)
+pred_dist = het_model(x_input)
+loss = GaussianNLLLoss()(pred_dist, target_y)
 loss.backward()
 ```
 *Run showcase:* `python examples/14_pramana_distributional_uncertainty.py`
@@ -240,23 +239,23 @@ loss.backward()
 *Sanskrit: तर्क (Dialectical Inference & Reductio ad Absurdum)*  
 **Tensorized Algebraic Reasoning & Knowledge-grounded Autograd.**
 
-Standard deep learning learns purely from statistical correlations and frequently violates domain axioms. T.A.R.K.A. embeds continuous first-order logic (Product, Łukasiewicz, and Gödel t-norms) into autograd:
+Standard deep learning learns purely from statistical correlations and can violate domain rules. T.A.R.K.A. embeds continuous first-order fuzzy logic (Product, Łukasiewicz, and Gödel t-norms with exact Gödel residuum) into autograd:
 * Native overloaded operators: `&` (AND), `|` (OR), `~` (NOT), `>>` (IMPLIES), `^` (IFF).
 * Differentiable softmin universal quantifiers ($\forall_\tau P(x)$) whose backpropagation gradients concentrate **$100.00\%$ of force** directly onto rule-violating instances.
-* Injects mathematical axioms (transitivity, symmetry, mutual exclusion) directly into loss:
+* Injects mathematical axioms (transitivity, symmetry, mutual exclusion) directly into training objectives:
   $$\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{task}} + \lambda \, \mathcal{L}_{\text{semantic}}(\Phi)$$
 
 ```python
 from minigrad import TARKA, LogicTensor, NeuralRelation, SemanticLoss
 from minigrad.tarka import TransitivityAxiom
 
-# Learn an abstract transitive relation with 0 labeled data!
+# Deduce multi-hop transitive closures from 1-hop chain facts + TransitivityAxiom
 relation = NeuralRelation(net)
 trans_axiom = TransitivityAxiom(relation, weight=1.0)
 
-# Backpropagate purely from symbolic transitivity: (R(x,y) ^ R(y,z)) => R(x,z)
+# Backpropagate symbolic transitivity: (R(x,y) ^ R(y,z)) => R(x,z)
 loss = trans_axiom.loss(entities)
-loss.backward()  # Trains relation to reach 100% transitivity satisfaction!
+loss.backward()
 ```
 *Run showcase:* `python examples/15_tarka_neuro_symbolic_reasoning.py`
 
@@ -266,10 +265,9 @@ loss.backward()  # Trains relation to reach 100% transitivity satisfaction!
 *Sanskrit: स्पन्द (The Primordial Pulse of Dynamic Consciousness)*  
 **Spike-Propagation Asynchronous Network Dynamics & Autograd.**
 
-Deep networks waste hundreds of Watts computing dense matrix multiplications on every clock cycle. S.P.A.N.D.A. implements biological Leaky Integrate-and-Fire (LIF) dynamics where neurons communicate via sparse binary pulses ($S \in \{0, 1\}$). Overcomes the non-differentiable Heaviside step barrier ($\delta(x) = 0$) using **Surrogate-Gradient Autograd** (Fast Sigmoid, ArcTan, Gaussian):
-* **Model-estimated temporal event sparsity:** $96.50\%$ quiescent activations on benchmark tasks.
-* **Model-estimated SynOps reduction:** $28.57\times$ fewer operations by modeling sparse synaptic events rather than dense MACs.
-* **Model-estimated energy telemetry:** $146.03\times$ hardware energy reduction calculated under the standard simulated neuromorphic energy model ($E_{\text{MAC}} \approx 4.6\text{ pJ}$ vs $E_{\text{AC}} \approx 0.9\text{ pJ}$ at 45nm CMOS).
+S.P.A.N.D.A. implements Leaky Integrate-and-Fire (LIF) spiking neuron dynamics where layers communicate via sparse binary spike trains ($S \in \{0, 1\}$) across $T$ discrete timesteps, overcoming the non-differentiable Heaviside step barrier ($\delta(x) = 0$) using **Surrogate-Gradient Autograd** (Fast Sigmoid, ArcTan, Gaussian):
+* **Per-layer spike recording:** Tracks actual emitted spike trains (`last_spikes`) across each `LIFLayer` and `SpikingLinear` layer during forward execution.
+* **Single-Pass ANN vs. $T$-Step SNN Analytical Energy Model:** Compares a single-pass ($T=1$) dense ANN baseline ($\text{MACs} = B \times D_{\text{in}} \times D_{\text{out}}$ at $E_{\text{MAC}} \approx 4.6\text{ pJ}$) against $T$-step event-driven SNN accumulate operations ($\text{ACs} = T \times r_{\text{layer}} \times \text{MACs}$ at $E_{\text{AC}} \approx 0.9\text{ pJ}$, 45nm Horowitz 2014). On the benchmark 2-layer SNN ($T=10$, measured firing rate $24.35\%$, sparsity $75.65\%$), estimated neuromorphic energy is **$2.57\times$ lower** than the single-pass dense ANN baseline.
 
 ```python
 from minigrad import SPANDA, SpikingSequential, SpikingLinear, RateDecoder
@@ -294,113 +292,74 @@ loss.backward()
 
 ## ⚙️ The 4 Foundational Pillars
 
-### Pillar 1: Glass-Box Autograd Engine (`minigrad/graph.py`)
-* **First-NaN Root-Cause Debugger:** Automatically halts at the exact math operation that caused a numerical explosion and captures a call-stack snapshot.
+### Pillar 1: Glass-Box Autograd Engine (`minigrad/glassbox.py`)
+* **First-NaN/Inf Root-Cause Debugger (`detect_anomaly`):** Inspects both forward-pass outputs and backward-pass gradients across the computation graph, halting at the exact operation that introduced non-finite values and attaching a creation call-stack snapshot (`"Call Stack Snapshot"`).
 * **Interactive ASCII Visualizer:** Generates human-readable computation graphs in the console via `visualize(loss)`.
-* **Natural-Language Gradient Explanations:** Explains vanishing/exploding gradients and saturated activations in plain English via `explain_gradients(model)`.
+* **Natural-Language Gradient Explanations:** Diagnoses vanishing/exploding gradients and saturated activations in plain English via `explain_gradients(model)`.
 
 ### Pillar 2: Zero-Runtime Embedded C Compiler (`minigrad/compiler.py`)
-* **Standalone ANSI C99 Export:** Compiles active models and computational graphs into self-contained C code (`export_c`, `to_c`, `compile_to_library`).
-* **Binary Weight Decoupling (`model.bin`):** Instant compilation (< 0.5s) and support for $10\text{M}+$ parameter models via memory-mapped binary weights.
-* **INT8 Post-Training Quantization:** Cuts parameter storage by $75\%$ using native `int8_t` weights with per-tensor scales and fused integer-float kernels.
-* **Greedy Liveness-Based Interval Memory Reuse:** Re-uses intermediate memory using greedy interval graph coloring on activation liveness intervals, reducing activation RAM consumption by up to $35\%-90\%$ depending on DAG topology.
-* **Cache Tiling & OpenMP:** $32 \times 32$ loop blocking and `#pragma omp parallel for` multithreading for multi-core server throughput.
-* **Static Key-Value (KV) Cache:** Native C multi-head attention KV-cache for streaming next-token generation in causal transformers (miniGPT).
-* **Firmware & Embedded Ready:** 100% static buffers in generated deployment models (0 bytes `malloc`; auxiliary benchmark timing harness dynamically allocates sample timing arrays), runs on microcontrollers (ESP32, STM32, ARM Cortex-M) with zero Python or runtime dependencies.
+* **Standalone ANSI C99 Export:** Compiles feed-forward and elementwise computational graphs (`Linear`, `MatMul`, `Add`, `Sub`, `Mul`, `Div`, `Neg`, `Pow`, `ReLU`, `Sigmoid`, `Tanh`, `GELU`, `Sin`, `Cos`, `Abs`, `Exp`, `Log`, `Softmax`, `LayerNorm`, `RMSNorm`) into self-contained C99 code (`export_c`, `to_c`, `compile_to_library`), raising `NotImplementedError` on unsupported operations.
+* **Binary Weight Decoupling (`model.bin`):** Supports decoupled binary weight loading via `mmap` / `fread`.
+* **INT8 Post-Training Quantization:** Reduces weight storage by $75\%$ using symmetric `int8_t` weights with per-tensor scale factors.
+* **Greedy Liveness-Based Interval Memory Reuse:** Re-uses intermediate activation buffers using greedy interval graph coloring on liveness intervals, reducing static RAM footprint by $35\%–90\%$ depending on DAG depth.
+* **Cache Tiling & OpenMP:** Optional $32 \times 32$ loop blocking and `#pragma omp parallel for` pragmas.
 
 ### Pillar 3: Symbolic Graph Optimization (`minigrad/graph_opt.py`)
-* Algebraic simplification rewrites ($x + 0 \to x$, $x \times 1 \to x$, $x - x \to 0$, $x / x \to 1$).
+* Algebraic simplification rewrites ($x + 0 \to x$, $x \times 1 \to x$, $x - x \to 0$, $x / x \to 1$) under finite real-domain assumptions.
 * Constant folding across static subgraphs.
-* Kernel fusion: fuses Linear + ReLU / GELU into single-loop execution kernels, eliminating intermediate memory allocations.
+* Kernel fusion: fuses `Linear + ReLU` into `fused_linear_relu` execution nodes with full first- and second-order VJP support.
 
 ### Pillar 4: Pure Functional `vmap` & DP-SGD (`minigrad/vmap.py`, `minigrad/dp.py`)
-* **Functional Batching & Per-Sample Mapping (`vmap`):** Provides a clean functional vectorized-map interface across arbitrary input batch dimensions via per-sample mapping and batch reconstruction.
-* **Reverse-Mode Batched Jacobian Calculation (`jacrev` / `batched_jacobian`):** Efficient per-sample functional batching providing substantial speedups over sequential single-sample autograd loops.
-* **Differential Privacy Engine & Analytical RDP Upper-Bound Accountant (`dp.py`):** Implements per-sample gradient clipping, calibrated Gaussian noise injection, and an analytical Rényi Differential Privacy (`RDPAccountant`, `compute_rdp_epsilon`) upper-bound accountant based on Wang, Balle & Kasiviswanathan (2019) computing tight cumulative $(\epsilon, \delta)$-DP bounds under documented Poisson subsampling assumptions.
+* **Ergonomic Functional Slice-Mapping (`vmap`):** Provides a clean functional batch-mapping interface (`vmap`, `make_functional`, `per_sample_gradients`) that maps pure functions across a specified batch axis and stacks the resulting outputs.
+* **Reverse-Mode Jacobian Calculation (`jacrev` / `batched_jacobian`):** Computes exact per-sample Jacobians by sweeping unit basis vectors through reverse-mode `grad`.
+* **Differential Privacy Engine & Analytical RDP Accountant (`dp.py`):** Implements per-sample $\ell_2$ gradient clipping, calibrated Gaussian noise injection, and an analytical Rényi Differential Privacy (`RDPAccountant`, `compute_rdp_epsilon`) upper-bound accountant based on Wang, Balle & Kasiviswanathan (2019).
 
 ---
 
 ## 📂 Runnable Examples
 
-Explore the complete collection of 16 self-contained runnable showcases:
+Explore the complete collection of 16 self-contained runnable showcases in `examples/`:
 
 ```bash
-# Core Deep Learning
-python examples/01_scalar_autograd.py               # Pure scalar autograd
-python examples/02_linear_regression.py             # Vectorized linear regression
-python examples/03_mlp_xor.py                       # Non-linear XOR classification
-python examples/04_mnist_mlp.py                     # Handwritten digit recognition (MLP)
-python examples/05_mnist_cnn.py                     # Convolutional Neural Network (Conv2D)
-python examples/06_transformer_minigpt.py           # miniGPT causal language model
-python examples/07_lora_finetuning.py               # Parameter-Efficient Fine-Tuning (LoRA)
-python examples/08_pinn_harmonic_oscillator.py      # Physics-Informed Neural Network (PINN)
+# Core Deep Learning & Autograd
+python examples/01_scalar_autograd.py                    # Pure scalar & tensor autograd basics
+python examples/02_linear_regression.py                  # Vectorized linear regression
+python examples/03_mlp_xor.py                            # Non-linear XOR classification with MLP
+python examples/04_mnist_mlp.py                          # MNIST digit classification (MLP)
+python examples/05_mnist_cnn.py                          # MNIST Convolutional Neural Network (Conv2D)
+python examples/06_mini_gpt.py                           # Character-level miniGPT causal transformer
+python examples/07_pinn_harmonic_oscillator.py           # Physics-Informed Neural Network (PINN) PDE solver
 
-# The 4 Pillars
-python examples/09_glass_box_debugging.py           # Root-cause NaN diagnosis & ASCII DAG
-python examples/10_embedded_c_compiler.py           # Zero-runtime standalone C code generation
-python examples/11_vmap_and_dp_sgd.py               # Fast batched Jacobians & private DP-SGD
+# The 4 Foundational Pillars
+python examples/08_glassbox_debugging.py                 # First-NaN root-cause diagnosis & ASCII DAG
+python examples/09_embedded_c_export.py                  # Standalone ANSI C99 codegen & native compilation
+python examples/10_graph_optimization.py                 # Algebraic rewrites, constant folding & fusion
+python examples/11_vmap_and_dp_sgd.py                    # Functional per-sample gradients & private DP-SGD
 
 # The 5 Frontier Innovations
-python examples/12_sutra_neural_ode.py              # S.U.T.R.A. Continuous-Depth Neural ODEs
-python examples/13_avyaya_reversible_computing.py   # A.V.Y.A.Y.A. O(1) Memory 50-Layer Reversible Net
-python examples/14_pramana_distributional_uncertainty.py # P.R.A.M.A.N.A. Epistemic Uncertainty Tensors
-python examples/15_tarka_neuro_symbolic_reasoning.py # T.A.R.K.A. Neuro-Symbolic Differentiable Logic
-python examples/16_spanda_neuromorphic_snn.py       # S.P.A.N.D.A. Neuromorphic Event-Driven SNN
+python examples/12_sutra_neural_ode.py                   # S.U.T.R.A. Continuous-Depth Neural ODEs
+python examples/13_avyaya_reversible_computing.py        # A.V.Y.A.Y.A. O(1) Memory 50-Layer Reversible Net
+python examples/14_pramana_distributional_uncertainty.py # P.R.A.M.A.N.A. Moment Propagation & Heteroscedastic MLP
+python examples/15_tarka_neuro_symbolic_reasoning.py     # T.A.R.K.A. Neuro-Symbolic Differentiable Logic
+python examples/16_spanda_neuromorphic_snn.py            # S.P.A.N.D.A. Neuromorphic Event-Driven SNN
 ```
 
 ---
 
 ## 🧪 Verification & Testing
 
-miniGrad enforces rigorous mathematical and regression testing across 484 collected test cases, differential suites, and static typing:
-* **484 tests collected**: **446 tests** pass natively in pure-NumPy with zero external dependencies (the default CI environment), and **38 optional cross-framework parity tests** execute and pass in the `test-full-parity` CI matrix when PyTorch and Hugging Face Transformers are installed (in the full development environment with optional frameworks installed, **484 / 484 pass**).
+miniGrad enforces mathematical and regression testing across **495 collected test cases**, differential suites, and strict static typing:
+* **495 tests collected**: **457 tests** pass natively in pure-NumPy with zero external dependencies (the default CI environment), and **38 optional cross-framework parity tests** execute and pass when PyTorch and `safetensors` are installed (**495 / 495 pass**).
 
 ```bash
-# Run complete test suite (484 tests across contracts, lifecycles, random DAGs, compiler benchmarks)
+# Run complete test suite (495 tests across contracts, lifecycles, random DAGs, compiler benchmarks, audit regressions)
 python -m pytest
 
-# Run strict static type checking (0 errors across 70 source files)
+# Run strict static type checking (0 errors)
 python -m mypy minigrad tests
 
 # Run linter & formatter checks (0 issues)
 python -m ruff check minigrad tests
-```
-
-```text
-============================= test session starts =============================
-platform win32 -- Python 3.11.0, pytest-8.3.4
-collected 484 items
-
-tests/test_api_contracts.py .............                                [  3%]
-tests/test_compiler.py ...............                                   [  5%]
-tests/test_compiler_benchmarks.py ...                                    [  6%]
-tests/test_contracts.py ...............                                  [  9%]
-tests/test_core_semantics.py ........................................... [ 18%]
-........................................................................ [ 33%]
-........................                                                 [ 38%]
-tests/test_double_backward.py .............                              [ 40%]
-tests/test_glassbox.py ........                                          [ 42%]
-tests/test_grad_check.py ..................                              [ 46%]
-tests/test_graph_opt.py ............                                     [ 48%]
-tests/test_layers.py ............                                        [ 51%]
-tests/test_lifecycle.py ...........                                      [ 53%]
-tests/test_new_features.py ...................                           [ 57%]
-tests/test_ops.py ......................                                 [ 62%]
-tests/test_optim.py .....                                                [ 63%]
-tests/test_public_api.py .......                                         [ 64%]
-tests/test_random_dag_opt.py ........................................... [ 73%]
-..........................................................               [ 85%]
-tests/test_safetensors.py ......                                         [ 86%]
-tests/test_spanda.py .......                                             [ 88%]
-tests/test_sutra.py ........                                             [ 89%]
-tests/test_tarka.py ........                                             [ 91%]
-tests/test_vmap.py ...........                                           [ 93%]
-tests/test_avyaya.py ........                                            [ 95%]
-tests/test_pramana.py ........                                           [100%]
-
-============================ 484 passed in 22.45s =============================
-(In pure-NumPy CI without optional PyTorch: 446 passed, 38 skipped in ~9s;
- In full-parity CI with PyTorch + Transformers: 484 passed in ~22s)
 ```
 
 ---

@@ -253,13 +253,16 @@ class ReversibleSequential(Module):
             for block in self.blocks:
                 curr = block(curr)
             if return_telemetry:
+                from minigrad.graph import topological_sort
+                topo = topological_sort(curr)
+                measured_bytes = sum(n.data.nbytes for n in topo if n._prev)
                 telem = ReconstructionTelemetry(
                     n_blocks=len(self.blocks),
                     max_drift=0.0,
                     mean_drift=0.0,
                     forward_memory_saved_ratio=0.0,
-                    peak_activation_bytes_standard=len(self.blocks) * x.data.nbytes,
-                    peak_activation_bytes_avyaya=len(self.blocks) * x.data.nbytes,
+                    peak_activation_bytes_standard=measured_bytes,
+                    peak_activation_bytes_avyaya=measured_bytes,
                 )
                 self.telemetry = telem
                 return curr, telem
@@ -300,9 +303,22 @@ class ReversibleSequential(Module):
             _op="avyaya_reversible_sequential",
         )
 
+        # Measure actual retained activation bytes on the graph (only `out` is retained)
+        from minigrad.graph import topological_sort
+        retained_nodes = [n for n in topological_sort(out) if n._prev]
+        peak_avyaya = sum(n.data.nbytes for n in retained_nodes)
+        L = len(self.blocks)
+        peak_standard = L * x.data.nbytes
+
         if needs_grad:
+            import weakref
+            out_ref = weakref.ref(out)
+
             def _backward() -> None:
-                dy_curr = out.grad.copy()
+                o = out_ref()
+                if o is None:
+                    return
+                dy_curr = o.grad.copy()
                 y_curr = final_y_data.copy()
 
                 # Reverse traversal: reconstruct states and compute gradients on the fly
@@ -314,11 +330,6 @@ class ReversibleSequential(Module):
                 max_drift = float(np.max(np.abs(reconstructed_x0 - x.data)))
                 mean_drift = float(np.mean(np.abs(reconstructed_x0 - x.data)))
 
-                # Memory telemetry
-                L = len(self.blocks)
-                bytes_per_act = x.data.nbytes
-                peak_standard = L * bytes_per_act
-                peak_avyaya = bytes_per_act
                 saved_ratio = float((peak_standard - peak_avyaya) / max(peak_standard, 1))
 
                 self.telemetry = ReconstructionTelemetry(
@@ -338,12 +349,12 @@ class ReversibleSequential(Module):
 
         if return_telemetry:
             telem = ReconstructionTelemetry(
-                n_blocks=len(self.blocks),
+                n_blocks=L,
                 max_drift=0.0,
                 mean_drift=0.0,
-                forward_memory_saved_ratio=float((len(self.blocks) - 1) / max(len(self.blocks), 1)),
-                peak_activation_bytes_standard=len(self.blocks) * x.data.nbytes,
-                peak_activation_bytes_avyaya=x.data.nbytes,
+                forward_memory_saved_ratio=float((peak_standard - peak_avyaya) / max(peak_standard, 1)),
+                peak_activation_bytes_standard=peak_standard,
+                peak_activation_bytes_avyaya=peak_avyaya,
             )
             self.telemetry = telem
             return out, telem

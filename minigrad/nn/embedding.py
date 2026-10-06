@@ -8,6 +8,8 @@ Reference: Standard embedding lookup used in Word2Vec, BERT, GPT, etc.
 """
 from __future__ import annotations
 
+import weakref
+
 import numpy as np
 
 from minigrad.nn.module import Module
@@ -51,14 +53,21 @@ class Embedding(Module):
             requires_grad=self.weight.requires_grad,
             _children=(self.weight,),
             _op="embedding",
+            _ctx=idx,
         )
 
-        def _backward() -> None:
-            if self.weight.requires_grad:
-                # Scatter gradients back to the weight matrix
-                np.add.at(self.weight.grad, idx, out.grad)
+        if out.requires_grad:
+            out_ref = weakref.ref(out)
 
-        out._backward = _backward
+            def _backward() -> None:
+                o = out_ref()
+                if o is None:
+                    return
+                if self.weight.requires_grad:
+                    # Scatter gradients back to the weight matrix
+                    np.add.at(self.weight.grad, idx, o.grad)
+
+            out._backward = _backward
         return out
 
     def __repr__(self) -> str:

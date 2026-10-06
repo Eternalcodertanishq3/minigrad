@@ -159,7 +159,7 @@ class LogicTensor:
         Continuous Implication: A ⇒ B.
         - Product (Reichenbach smooth implication): I(a, b) = 1 - a + a * b
         - Łukasiewicz: I(a, b) = min(1, 1 - a + b)
-        - Gödel: Smooth lower-bounded implication
+        - Gödel (exact residuum): I(a, b) = 1.0 if a <= b else b
         """
         o_t = other.tensor if isinstance(other, LogicTensor) else (
             other if isinstance(other, Tensor) else Tensor(float(other))
@@ -172,8 +172,10 @@ class LogicTensor:
             # min(1, 1 - a + b) = 1 - relu(a - b)
             out_t = Tensor(1.0) - (self.tensor - o_t).relu()
         elif self.tnorm == TNorm.GODEL:
-            # Smooth approximation: 1 - relu(a - b)
-            out_t = Tensor(1.0) - (self.tensor - o_t).relu()
+            # True Gödel residuum: 1.0 where a <= b, else b
+            mask_le = Tensor((self.tensor.data <= o_t.data).astype(np.float64), requires_grad=False)
+            mask_gt = Tensor((self.tensor.data > o_t.data).astype(np.float64), requires_grad=False)
+            out_t = mask_le + mask_gt * o_t
         else:
             raise ValueError(f"Unknown t-norm: {self.tnorm}")
 

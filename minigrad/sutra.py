@@ -369,6 +369,13 @@ def _integrate_interval_dopri5(
     if telemetry is not None:
         telemetry.n_evals += n_evals
 
+    reached_end = (direction > 0 and t >= t_end - 1e-12) or (direction < 0 and t <= t_end + 1e-12)
+    if not reached_end:
+        raise RuntimeError(
+            f"Dopri5 adaptive solver exceeded max_steps={max_steps} at t={t:.6e} "
+            f"before reaching t_end={t_end:.6e}."
+        )
+
     return y
 
 
@@ -712,12 +719,8 @@ def odeint(
             options=options,
         )
         if return_trajectory:
-            stacked_data = np.stack([t.data for t in traj_tensors], axis=0)
-            # Stack into single differentiable tensor if possible or return terminal
-            out = traj_tensors[-1] if not return_trajectory else Tensor(stacked_data, requires_grad=needs_grad)
-            # For trajectory unrolled, link to final or components
-            out._prev = tuple(traj_tensors)
-            out._op = f"unrolled_{method}"
+            from minigrad.ops import stack as ops_stack
+            out = ops_stack(traj_tensors, axis=0)
         else:
             out = traj_tensors[-1]
 
@@ -752,8 +755,14 @@ def odeint(
     )
 
     if needs_grad:
+        import weakref
+        out_ref = weakref.ref(out)
+
         def _backward() -> None:
-            incoming_g = out.grad
+            o = out_ref()
+            if o is None:
+                return
+            incoming_g = o.grad
             if return_trajectory:
                 # incoming_g has shape (K, *y0.shape)
                 grad_outputs = [incoming_g[i] for i in range(len(t_seq))]
@@ -822,8 +831,12 @@ class NeuralODE(Module):
         atol: float = 1e-5,
         use_adjoint: bool = True,
         options: Optional[Dict[str, Any]] = None,
+        t0: Optional[float] = None,
+        t1: Optional[float] = None,
     ) -> None:
         super().__init__()
+        if t0 is not None or t1 is not None:
+            t_span = (float(0.0 if t0 is None else t0), float(1.0 if t1 is None else t1))
         self.func = func
         self.t_span = t_span
         self.solver = solver

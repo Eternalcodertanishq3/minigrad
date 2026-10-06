@@ -1,8 +1,8 @@
 """
 compiler.py — Zero-Runtime Embedded C Compiler for miniGrad (Pillar 2).
 
-Compiles any miniGrad neural network or computational DAG into a single,
-self-contained pure ANSI C (C99) source file.
+Compiles supported miniGrad feedforward, MLP, normalization, and KV-cache attention
+computational DAGs into a single, self-contained pure ANSI C (C99) source file.
 
 Key Highlights:
 - Zero external runtime dependencies: no libtorch, no TFLite Micro, no BLAS.
@@ -290,7 +290,25 @@ static inline void minigrad_matmul_2d_tiled(const float* A, const float* B, floa
 
     "log": """static inline void minigrad_log(const float* in, float* out, int size) {
     for (int i = 0; i < size; i++) {
-        out[i] = logf(in[i] + 1e-9f);
+        out[i] = logf(in[i]);
+    }
+}""",
+
+    "sin": """static inline void minigrad_sin(const float* in, float* out, int size) {
+    for (int i = 0; i < size; i++) {
+        out[i] = sinf(in[i]);
+    }
+}""",
+
+    "cos": """static inline void minigrad_cos(const float* in, float* out, int size) {
+    for (int i = 0; i < size; i++) {
+        out[i] = cosf(in[i]);
+    }
+}""",
+
+    "abs": """static inline void minigrad_abs(const float* in, float* out, int size) {
+    for (int i = 0; i < size; i++) {
+        out[i] = fabsf(in[i]);
     }
 }""",
 
@@ -764,7 +782,25 @@ class CCompiler:
                     f"    minigrad_batchnorm1d({in0}, {mean_name}, {var_name}, {gamma_var}, {beta_var}, {out_var}, {m}, {n}, 1e-5f);"
                 )
 
-            elif op in ("reshape", "flatten"):
+            elif op == "neg":
+                self.used_kernels.add("mul_scalar")
+                self.c_instructions.append(
+                    f"    minigrad_mul_scalar({in0}, -1.0f, {out_var}, {out_size});"
+                )
+
+            elif op == "sin":
+                self.used_kernels.add("sin")
+                self.c_instructions.append(f"    minigrad_sin({in0}, {out_var}, {out_size});")
+
+            elif op == "cos":
+                self.used_kernels.add("cos")
+                self.c_instructions.append(f"    minigrad_cos({in0}, {out_var}, {out_size});")
+
+            elif op == "abs":
+                self.used_kernels.add("abs")
+                self.c_instructions.append(f"    minigrad_abs({in0}, {out_var}, {out_size});")
+
+            elif op in ("reshape", "flatten", "to"):
                 self.used_kernels.add("copy")
                 self.c_instructions.append(f"    minigrad_copy({in0}, {out_var}, {out_size});")
 
@@ -811,8 +847,9 @@ class CCompiler:
                     )
 
             else:
-                self.used_kernels.add("copy")
-                self.c_instructions.append(f"    minigrad_copy({in0}, {out_var}, {out_size});")
+                raise NotImplementedError(
+                    f"Operation '{op}' is not supported by the C99 compiler."
+                )
 
         # 5. Copy final activation result to output buffer
         final_node_name = self.node_names[id(self.output)]

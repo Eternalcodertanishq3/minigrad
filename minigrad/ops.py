@@ -10,6 +10,7 @@ the computation graph.
 """
 from __future__ import annotations
 
+import weakref
 from typing import Any, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
@@ -99,15 +100,21 @@ def softmax(x: Tensor, axis: int = -1) -> Tensor:
     probs = exp_x / np.sum(exp_x, axis=axis, keepdims=True)
     out = Tensor(probs, dtype=x.dtype, requires_grad=x.requires_grad, _children=(x,), _op="softmax", _ctx=axis)
 
-    def _backward() -> None:
-        if x.requires_grad:
-            # Jacobian of softmax: diag(p) - p @ p.T
-            # For batch efficiency: p * (grad - sum(p * grad, axis))
-            p = out.data
-            g = out.grad
-            x.grad += p * (g - np.sum(p * g, axis=axis, keepdims=True))
+    if out.requires_grad:
+        out_ref = weakref.ref(out)
 
-    out._backward = _backward
+        def _backward() -> None:
+            o = out_ref()
+            if o is None:
+                return
+            if x.requires_grad:
+                # Jacobian of softmax: diag(p) - p @ p.T
+                # For batch efficiency: p * (grad - sum(p * grad, axis))
+                p = o.data
+                g = o.grad
+                x.grad += p * (g - np.sum(p * g, axis=axis, keepdims=True))
+
+        out._backward = _backward
     return out
 
 
@@ -118,12 +125,18 @@ def log_softmax(x: Tensor, axis: int = -1) -> Tensor:
     log_probs = shifted - log_sum_exp
     out = Tensor(log_probs, dtype=x.dtype, requires_grad=x.requires_grad, _children=(x,), _op="log_softmax", _ctx=axis)
 
-    def _backward() -> None:
-        if x.requires_grad:
-            probs = np.exp(out.data)
-            x.grad += out.grad - probs * np.sum(out.grad, axis=axis, keepdims=True)
+    if out.requires_grad:
+        out_ref = weakref.ref(out)
 
-    out._backward = _backward
+        def _backward() -> None:
+            o = out_ref()
+            if o is None:
+                return
+            if x.requires_grad:
+                probs = np.exp(o.data)
+                x.grad += o.grad - probs * np.sum(o.grad, axis=axis, keepdims=True)
+
+        out._backward = _backward
     return out
 
 
@@ -132,18 +145,24 @@ def max(x: Tensor, axis: Optional[int] = None, keepdims: bool = False) -> Tensor
     out_data = np.max(x.data, axis=axis, keepdims=keepdims)
     out = Tensor(out_data, dtype=x.dtype, requires_grad=x.requires_grad, _children=(x,), _op="max", _ctx=(axis, keepdims))
 
-    def _backward() -> None:
-        if x.requires_grad:
-            grad = out.grad
-            if axis is not None and not keepdims:
-                shape = list(x.data.shape)
-                shape[axis] = 1
-                grad = grad.reshape(shape)
-            mask = x.data == np.max(x.data, axis=axis, keepdims=True)
-            count = mask.sum(axis=axis, keepdims=True)
-            x.grad += mask / count * grad
+    if out.requires_grad:
+        out_ref = weakref.ref(out)
 
-    out._backward = _backward
+        def _backward() -> None:
+            o = out_ref()
+            if o is None:
+                return
+            if x.requires_grad:
+                grad = o.grad
+                if axis is not None and not keepdims:
+                    shape = list(x.data.shape)
+                    shape[axis] = 1
+                    grad = grad.reshape(shape)
+                mask = x.data == np.max(x.data, axis=axis, keepdims=True)
+                count = mask.sum(axis=axis, keepdims=True)
+                x.grad += mask / count * grad
+
+        out._backward = _backward
     return out
 
 
@@ -157,12 +176,18 @@ def clip(x: Tensor, min_val: float, max_val: float) -> Tensor:
     out_data = np.clip(x.data, min_val, max_val)
     out = Tensor(out_data, dtype=x.dtype, requires_grad=x.requires_grad, _children=(x,), _op="clip", _ctx=(min_val, max_val))
 
-    def _backward() -> None:
-        if x.requires_grad:
-            mask = (x.data >= min_val) & (x.data <= max_val)
-            x.grad += mask.astype(x.data.dtype) * out.grad
+    if out.requires_grad:
+        out_ref = weakref.ref(out)
 
-    out._backward = _backward
+        def _backward() -> None:
+            o = out_ref()
+            if o is None:
+                return
+            if x.requires_grad:
+                mask = (x.data >= min_val) & (x.data <= max_val)
+                x.grad += mask.astype(x.data.dtype) * o.grad
+
+        out._backward = _backward
     return out
 
 
@@ -178,11 +203,17 @@ def abs(x: Tensor) -> Tensor:
     out_data = np.abs(x.data)
     out = Tensor(out_data, dtype=x.dtype, requires_grad=x.requires_grad, _children=(x,), _op="abs")
 
-    def _backward() -> None:
-        if x.requires_grad:
-            x.grad += np.sign(x.data) * out.grad
+    if out.requires_grad:
+        out_ref = weakref.ref(out)
 
-    out._backward = _backward
+        def _backward() -> None:
+            o = out_ref()
+            if o is None:
+                return
+            if x.requires_grad:
+                x.grad += np.sign(x.data) * o.grad
+
+        out._backward = _backward
     return out
 
 
@@ -192,14 +223,20 @@ def stack(tensors: list, axis: int = 0) -> Tensor:
     out = Tensor(data, requires_grad=any(t.requires_grad for t in tensors),
                  _children=tuple(tensors), _op="stack", _ctx=axis)
 
-    def _backward() -> None:
-        for i, t in enumerate(tensors):
-            if t.requires_grad:
-                idx: list[Any] = [slice(None)] * out.grad.ndim
-                idx[axis] = i
-                t.grad += out.grad[tuple(idx)]
+    if out.requires_grad:
+        out_ref = weakref.ref(out)
 
-    out._backward = _backward
+        def _backward() -> None:
+            o = out_ref()
+            if o is None:
+                return
+            for i, t in enumerate(tensors):
+                if t.requires_grad:
+                    idx: list[Any] = [slice(None)] * o.grad.ndim
+                    idx[axis] = i
+                    t.grad += o.grad[tuple(idx)]
+
+        out._backward = _backward
     return out
 
 
@@ -209,17 +246,23 @@ def concat(tensors: list, axis: int = 0) -> Tensor:
     out = Tensor(data, requires_grad=any(t.requires_grad for t in tensors),
                  _children=tuple(tensors), _op="concat", _ctx=axis)
 
-    def _backward() -> None:
-        offset = 0
-        norm_axis = axis if axis >= 0 else out.data.ndim + axis
-        for t in tensors:
-            if t.requires_grad:
-                slices = [slice(None)] * t.data.ndim
-                slices[norm_axis] = slice(offset, offset + t.data.shape[norm_axis])
-                t.grad += out.grad[tuple(slices)]
-                offset += t.data.shape[norm_axis]
+    if out.requires_grad:
+        out_ref = weakref.ref(out)
 
-    out._backward = _backward
+        def _backward() -> None:
+            o = out_ref()
+            if o is None:
+                return
+            offset = 0
+            norm_axis = axis if axis >= 0 else o.data.ndim + axis
+            for t in tensors:
+                if t.requires_grad:
+                    slices = [slice(None)] * t.data.ndim
+                    slices[norm_axis] = slice(offset, offset + t.data.shape[norm_axis])
+                    t.grad += o.grad[tuple(slices)]
+                    offset += t.data.shape[norm_axis]
+
+        out._backward = _backward
     return out
 
 
@@ -254,16 +297,22 @@ def split(x: Tensor, split_size_or_sections: Union[int, Sequence[int]], axis: in
             _ctx=(norm_axis, start, end),
         )
 
-        def make_backward(s=start, e=end, st=sub_t):
-            def _backward() -> None:
-                if x.requires_grad:
-                    slices = [slice(None)] * x.data.ndim
-                    slices[norm_axis] = slice(s, e)
-                    x.grad[tuple(slices)] += st.grad
+        if sub_t.requires_grad:
+            sub_t_ref = weakref.ref(sub_t)
 
-            return _backward
+            def make_backward(s=start, e=end, st_ref=sub_t_ref):
+                def _backward() -> None:
+                    st = st_ref()
+                    if st is None:
+                        return
+                    if x.requires_grad:
+                        slices = [slice(None)] * x.data.ndim
+                        slices[norm_axis] = slice(s, e)
+                        x.grad[tuple(slices)] += st.grad
 
-        sub_t._backward = make_backward()
+                return _backward
+
+            sub_t._backward = make_backward()
         outputs.append(sub_t)
 
     return outputs
@@ -272,20 +321,26 @@ def split(x: Tensor, split_size_or_sections: Union[int, Sequence[int]], axis: in
 def pad(x: Tensor, pad_width, constant_values: float = 0) -> Tensor:
     """Pad a tensor."""
     out_data = np.pad(x.data, pad_width, mode="constant", constant_values=constant_values)
-    out = Tensor(out_data, requires_grad=x.requires_grad, _children=(x,), _op="pad")
+    out = Tensor(out_data, requires_grad=x.requires_grad, _children=(x,), _op="pad", _ctx=pad_width)
 
-    def _backward() -> None:
-        if x.requires_grad:
-            # Extract the original region from the padded gradient
-            slices = []
-            for p in pad_width:
-                if isinstance(p, int):
-                    slices.append(slice(p, -p if p > 0 else None))
-                else:
-                    slices.append(slice(p[0], -p[1] if p[1] > 0 else None))
-            x.grad += out.grad[tuple(slices)]
+    if out.requires_grad:
+        out_ref = weakref.ref(out)
 
-    out._backward = _backward
+        def _backward() -> None:
+            o = out_ref()
+            if o is None:
+                return
+            if x.requires_grad:
+                # Extract the original region from the padded gradient
+                slices = []
+                for p in pad_width:
+                    if isinstance(p, int):
+                        slices.append(slice(p, -p if p > 0 else None))
+                    else:
+                        slices.append(slice(p[0], -p[1] if p[1] > 0 else None))
+                x.grad += o.grad[tuple(slices)]
+
+        out._backward = _backward
     return out
 
 
@@ -309,45 +364,50 @@ def einsum(subscripts: str, *operands: Tensor) -> Tensor:
 
     requires_grad = any(op.requires_grad for op in operands)
     out = Tensor(out_data, requires_grad=requires_grad,
-                 _children=tuple(operands), _op="einsum")
+                 _children=tuple(operands), _op="einsum", _ctx=subscripts)
 
-    # Parse subscripts for backward
-    if '->' in subscripts:
-        input_subs, output_sub = subscripts.split('->')
-    else:
-        input_subs = subscripts
-        output_sub = None
-    input_sub_list = input_subs.split(',')
+    if out.requires_grad:
+        # Parse subscripts for backward
+        if '->' in subscripts:
+            input_subs, output_sub = subscripts.split('->')
+        else:
+            input_subs = subscripts
+            output_sub = None
+        input_sub_list = input_subs.split(',')
+        out_ref = weakref.ref(out)
 
-    def _backward() -> None:
-        for i, op in enumerate(operands):
-            if not op.requires_grad:
-                continue
-            target_sub = input_sub_list[i]
-
-            # Trace / diagonal contraction special case (e.g. 'ii->')
-            if len(set(target_sub)) < len(target_sub):
-                if output_sub is None or output_sub == "":
-                    dim = op.data.shape[0]
-                    grad = out.grad * np.eye(dim)
-                    op.grad += grad
+        def _backward() -> None:
+            o = out_ref()
+            if o is None:
+                return
+            for i, op in enumerate(operands):
+                if not op.requires_grad:
                     continue
+                target_sub = input_sub_list[i]
 
-            # Standard einsum backward pass
-            grad_sub = output_sub if output_sub is not None else ""
-            backward_inputs = [grad_sub]
-            backward_data = [out.grad]
+                # Trace / diagonal contraction special case (e.g. 'ii->')
+                if len(set(target_sub)) < len(target_sub):
+                    if output_sub is None or output_sub == "":
+                        dim = op.data.shape[0]
+                        grad = o.grad * np.eye(dim)
+                        op.grad += grad
+                        continue
 
-            for j, op_j in enumerate(operands):
-                if j != i:
-                    backward_inputs.append(input_sub_list[j])
-                    backward_data.append(op_j.data)
+                # Standard einsum backward pass
+                grad_sub = output_sub if output_sub is not None else ""
+                backward_inputs = [grad_sub]
+                backward_data = [o.grad]
 
-            backward_subscripts = ",".join(backward_inputs) + "->" + target_sub
-            grad = np.einsum(backward_subscripts, *backward_data)
-            op.grad += grad
+                for j, op_j in enumerate(operands):
+                    if j != i:
+                        backward_inputs.append(input_sub_list[j])
+                        backward_data.append(op_j.data)
 
-    out._backward = _backward
+                backward_subscripts = ",".join(backward_inputs) + "->" + target_sub
+                grad = np.einsum(backward_subscripts, *backward_data)
+                op.grad += grad
+
+        out._backward = _backward
     return out
 
 

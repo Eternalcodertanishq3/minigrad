@@ -144,7 +144,7 @@ def compile_and_benchmark_native_c(c_file: Path, model, test_input: Tensor):
 
     print("\nExecuting native C inference:")
     print("-" * 70)
-    run_res = subprocess.run([str(exe_file)], capture_output=True, text=True, check=False)
+    run_res = subprocess.run([str(exe_file.resolve())], capture_output=True, text=True, check=False)
     print(run_res.stdout.strip())
     print("-" * 70)
 

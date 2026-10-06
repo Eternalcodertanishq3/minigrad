@@ -1,10 +1,10 @@
 """
-vmap.py — Pure Functional Vectorizing Map, Per-Sample Gradients & Batched Jacobians (Pillar 4).
+vmap.py — Functional Slice-Mapping Transform, Per-Sample Gradients & Batched Jacobians (Pillar 4).
 
 Provides:
-- vmap(): Automatically vectorizes any function over batch dimensions without manual loops.
+- vmap(): Functional batch-mapping transform that slices inputs along `in_axes`, applies `func` per slice, and stacks outputs.
 - make_functional(): Converts any stateful miniGrad Module into a pure, stateless callable.
-- per_sample_gradients(): Computes per-sample parameter gradients [B, *shape] in a single pass.
+- per_sample_gradients(): Computes exact per-sample parameter gradients [B, *shape] via functional vmap.
 - jacrev(): Computes reverse-mode Jacobians of vector-valued functions.
 - batched_jacobian(): Computes full Jacobian tensors [B, M, N] across batched inputs.
 """
@@ -292,7 +292,7 @@ def per_sample_gradients(
     *batched_inputs: Tensor,
 ) -> Union[Dict[str, Tensor], Tuple[Tensor, ...]]:
     """
-    Computes per-sample gradients [B, *param.shape] for all parameters in a single vectorized pass.
+    Computes exact per-sample gradients [B, *param.shape] for all parameters via functional slice mapping.
 
     Unlike standard backpropagation which sums gradients across the batch,
     per_sample_gradients preserves sample-level gradient vectors, enabling

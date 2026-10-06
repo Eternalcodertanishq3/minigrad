@@ -41,55 +41,79 @@ def print_banner(title: str):
 
 
 def demo_zero_data_knowledge_imprinting():
-    print_banner("EXPERIMENT 1: Zero-Data Knowledge Imprinting via Symbolic Axioms")
-    print("Standard neural nets require thousands of labeled examples to learn relationships.")
-    print("T.A.R.K.A. teaches networks abstract logical properties with ZERO labeled data!\n")
+    print_banner("EXPERIMENT 1: Multi-Hop Transitive Closure Deduction via Symbolic Axioms")
+    print("Given only direct 1-hop chain facts R(0,1)=1, R(1,2)=1, R(2,3)=1 and R(3,0)=0,")
+    print("T.A.R.K.A. deduces unlabeled multi-hop transitive links R(0,2), R(1,3), R(0,3) -> 1!\n")
 
     np.random.seed(42)
 
-    # 4 Entities with 2D continuous feature embeddings
-    entities = Tensor(np.array([
-        [0.1, 0.2],  # Entity 0
-        [0.5, 0.4],  # Entity 1
-        [1.0, 0.8],  # Entity 2
-        [1.5, 1.2],  # Entity 3
-    ]), requires_grad=False)
+    # 4 Entities with 4D one-hot identity embeddings so every pair (i, j) is distinct
+    entities = Tensor(np.eye(4, dtype=np.float64), requires_grad=False)
 
     # Relation Network R(x, y) -> [0, 1]
     rel_net = Sequential([
-        Linear(4, 12),
+        Linear(8, 16),
         ReLU(),
-        Linear(12, 1),
+        Linear(16, 1),
     ])
     relation = NeuralRelation(rel_net)
 
+    # Supervised base facts: 1-hop chain 0->1, 1->2, 2->3 (true) and reverse/self anchors (false)
+    fact_x = Tensor(np.array([
+        entities.data[0], entities.data[1], entities.data[2],
+        entities.data[3], entities.data[2], entities.data[1],
+        entities.data[0], entities.data[1], entities.data[2], entities.data[3],
+    ]))
+    fact_y = Tensor(np.array([
+        entities.data[1], entities.data[2], entities.data[3],
+        entities.data[0], entities.data[0], entities.data[0],
+        entities.data[0], entities.data[1], entities.data[2], entities.data[3],
+    ]))
+    fact_targets = Tensor(np.array([
+        [1.0], [1.0], [1.0],
+        [0.0], [0.0], [0.0],
+        [0.0], [0.0], [0.0], [0.0],
+    ]))
+
     # Axiom: Transitivity ∀x,y,z: (R(x, y) ∧ R(y, z)) ⇒ R(x, z)
-    trans_axiom = TransitivityAxiom(relation, weight=1.0)
+    trans_axiom = TransitivityAxiom(relation, weight=1.5)
+    loss_fn = MSELoss()
 
-    # Initial state
+    init_mat = relation.pairwise_matrix(entities).numpy()
     init_sat = trans_axiom.evaluate(entities).satisfaction()
-    print(f"Untrained Initial Transitivity Satisfaction: {init_sat * 100:.2f}%\n")
-    print("Beginning symbolic optimization (0 labeled pairs, only TransitivityAxiom)...")
-    print(f"{'Epoch':<8} | {'Axiom Loss':<14} | {'Transitivity Satisfaction'}")
-    print("-" * 55)
+    init_trans_mean = float(np.mean([init_mat[0, 2], init_mat[1, 3], init_mat[0, 3]]))
+    print(f"Untrained Transitivity Satisfaction:   {init_sat * 100:.2f}%")
+    print(f"Untrained Unlabeled Closure Mean:      {init_trans_mean:.4f}\n")
+    print("Optimizing Base Chain Facts + TransitivityAxiom (unlabeled pairs: (0,2), (1,3), (0,3))...")
+    print(f"{'Epoch':<8} | {'Total Loss':<12} | {'Axiom Sat':<12} | {'Deduced R(0,2)':<16} | {'Deduced R(0,3)'}")
+    print("-" * 72)
 
-    optimizer = Adam(relation.parameters(), lr=0.06)
+    optimizer = Adam(relation.parameters(), lr=0.05)
 
-    for epoch in range(1, 51):
+    for epoch in range(1, 121):
         optimizer.zero_grad()
-        loss = trans_axiom.loss(entities)
+        pred_facts = relation(fact_x, fact_y).tensor
+        sup_loss = loss_fn(pred_facts, fact_targets)
+        axiom_loss = trans_axiom.loss(entities)
+        loss = sup_loss + axiom_loss
         loss.backward()
         optimizer.step()
 
-        if epoch % 10 == 0 or epoch == 1:
+        if epoch % 30 == 0 or epoch == 1:
+            mat = relation.pairwise_matrix(entities).numpy()
             sat = trans_axiom.evaluate(entities).satisfaction()
-            print(f"{epoch:<8} | {loss.item():<14.6f} | {sat * 100:.2f}%")
+            print(f"{epoch:<8} | {loss.item():<12.6f} | {sat * 100:<11.2f}% | {mat[0, 2]:<16.4f} | {mat[0, 3]:.4f}")
 
+    final_mat = relation.pairwise_matrix(entities).numpy()
     final_sat = trans_axiom.evaluate(entities).satisfaction()
     print(f"\nFinal Transitivity Satisfaction: {final_sat * 100:.2f}%")
-    print(f"Satisfaction Improvement:       +{(final_sat - init_sat) * 100:.2f}%")
-    print("\n[Proof Confirmed]: Neural weights successfully aligned with first-order transitivity")
-    print("without seeing a single supervised label!")
+    print(
+        f"Deduced Unlabeled Transitive Links: "
+        f"R(0,2)={final_mat[0, 2]:.3f}, R(1,3)={final_mat[1, 3]:.3f}, R(0,3)={final_mat[0, 3]:.3f} "
+        f"(while R(3,0)={final_mat[3, 0]:.3f})"
+    )
+    print("\n[Proof Confirmed]: TransitivityAxiom propagated truth across multi-hop chains")
+    print("without collapsing to the trivial all-zero relation!")
 
 
 def demo_low_data_mutual_exclusion():

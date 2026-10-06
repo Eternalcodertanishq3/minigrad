@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import math
+import traceback
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -23,6 +24,17 @@ from minigrad.tensor import Tensor
 # ── Global Anomaly Detection State ───────────────────────────────────
 
 _anomaly_detection_enabled: bool = False
+
+
+def capture_call_stack(max_frames: int = 4) -> str:
+    """Capture a concise Python call-stack snapshot for Glass-Box diagnostics."""
+    frames = traceback.extract_stack()
+    relevant = [
+        f"{Path(f.filename).name}:{f.lineno} in {f.name}"
+        for f in frames[:-1]
+        if "glassbox.py" not in f.filename
+    ]
+    return " -> ".join(relevant[-max_frames:]) if relevant else "unknown"
 
 
 class detect_anomaly:
@@ -56,6 +68,7 @@ class detect_anomaly:
 
 def is_anomaly_detection_enabled() -> bool:
     return _anomaly_detection_enabled
+
 
 
 # ── Anomaly Diagnostics & Exceptions ────────────────────────────────

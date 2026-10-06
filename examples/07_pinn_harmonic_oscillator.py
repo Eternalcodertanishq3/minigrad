@@ -29,9 +29,9 @@ from minigrad.tensor import Tensor
 
 # ── Physical System Parameters ───────────────────────────────────────
 
-ZETA = 0.1       # Damping ratio (underdamped: 0 < ζ < 1)
-OMEGA_0 = 4.0     # Natural frequency
-T_MAX = 3.0       # Time horizon
+ZETA = 0.15      # Damping ratio (underdamped: 0 < zeta < 1)
+OMEGA_0 = 2.5     # Natural frequency
+T_MAX = 2.0       # Time horizon
 N_COLLOC = 40     # Number of collocation points
 
 
@@ -45,7 +45,13 @@ def exact_solution(t: np.ndarray, zeta: float = ZETA, omega_0: float = OMEGA_0) 
 # ── PINN Architecture ────────────────────────────────────────────────
 
 class PINN(Module):
-    """Multi-Layer Perceptron with smooth Tanh activations for second-order PDE solving."""
+    """
+    Physics-Informed Neural Network with Hard Initial-Condition Trial Parameterization
+    (Lagaris et al., 1998):
+        u_θ(t) = 1.0 + t² · MLP_θ(t)
+    Identically satisfies u(0) = 1.0 and u'(0) = 0.0 for all θ, eliminating the
+    trivial u(t) ≡ 0 local minimum of harmonic oscillators.
+    """
 
     def __init__(self, hidden_dim: int = 32):
         super().__init__()
@@ -54,17 +60,18 @@ class PINN(Module):
         self.out = Linear(hidden_dim, 1)
 
     def forward(self, t: Tensor) -> Tensor:
-        h1 = self.fc1(t).tanh()
+        h1 = self.fc1(t).sin()
         h2 = self.fc2(h1).tanh()
-        return self.out(h2)
+        net_out = self.out(h2)
+        return (t ** 2) * net_out + 1.0
 
 
 # ── Training ─────────────────────────────────────────────────────────
 
 def main():
     print("=" * 65)
-    print("  Physics-Informed Neural Network (PINN) — miniGrad")
-    print("  Damped Harmonic Oscillator: u'' + 2ζω₀ u' + ω₀² u = 0")
+    print("  Physics-Informed Neural Network (PINN) -- miniGrad")
+    print("  Damped Harmonic Oscillator: u'' + 2*zeta*omega_0 u' + omega_0^2 u = 0")
     print("=" * 65)
 
     np.random.seed(42)
@@ -73,7 +80,7 @@ def main():
     optimizer = Adam(model.parameters(), lr=1e-2)
 
     # Collocation points inside domain (0, T_MAX]
-    t_colloc_np = np.linspace(0.01, T_MAX, N_COLLOC).reshape(-1, 1)
+    t_colloc_np = np.linspace(0.02, T_MAX, N_COLLOC).reshape(-1, 1)
 
     # Initial condition point at t = 0
     t_0_np = np.array([[0.0]])
@@ -84,39 +91,40 @@ def main():
     print("-" * 65)
 
     t_start = time.time()
-    steps = 300
+    steps = 500
 
     for step in range(1, steps + 1):
+        if step == 350:
+            optimizer.lr = 3e-3
+
         # 1. Physics loss at collocation points
         t = Tensor(t_colloc_np, requires_grad=True)
         u = model(t)
 
-        # 1st spatial derivative: u_t = du/dt (create_graph=True)
+        # 1st temporal derivative: u_t = du/dt (create_graph=True)
         u_t = grad(u.sum(), t, create_graph=True)[0]
 
-        # 2nd spatial derivative: u_tt = d²u/dt² (create_graph=True)
+        # 2nd temporal derivative: u_tt = d²u/dt² (create_graph=True)
         u_tt = grad(u_t.sum(), t, create_graph=True)[0]
 
         # Damped oscillator PDE residual: R = u_tt + 2ζω₀ u_t + ω₀² u
         residual = u_tt + (2.0 * ZETA * OMEGA_0) * u_t + (OMEGA_0 ** 2) * u
         loss_pde = (residual ** 2).mean()
 
-        # 2. Initial condition loss at t = 0: u(0) = 1, u'(0) = 0
+        # 2. Verify initial condition at t = 0: u(0) = 1, u'(0) = 0
         t0 = Tensor(t_0_np, requires_grad=True)
         u0 = model(t0)
         u0_t = grad(u0.sum(), t0, create_graph=True)[0]
-
         loss_ic = ((u0 - 1.0) ** 2).sum() + ((u0_t - 0.0) ** 2).sum()
 
-        # Total weighted loss
-        total_loss = loss_pde + 10.0 * loss_ic
+        total_loss = loss_pde + loss_ic
 
         # Optimize neural network weights
         optimizer.zero_grad()
         total_loss.backward()
         optimizer.step()
 
-        if step % 50 == 0 or step == 1:
+        if step % 90 == 0 or step == 1:
             elapsed = time.time() - t_start
             pde_val = float(loss_pde.data)
             ic_val = float(loss_ic.data)
