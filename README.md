@@ -6,6 +6,8 @@
 
 [![CI](https://github.com/Eternalcodertanishq3/minigrad/actions/workflows/ci.yml/badge.svg)](https://github.com/Eternalcodertanishq3/minigrad/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/minigrad-framework.svg?color=blue)](https://pypi.org/project/minigrad-framework/)
+[![Total Downloads](https://img.shields.io/pepy/dt/minigrad-framework?color=blue&label=total%20downloads)](https://pepy.tech/project/minigrad-framework)
+[![Monthly Downloads](https://img.shields.io/pypi/dm/minigrad-framework.svg?color=blue&label=downloads%2Fmonth)](https://pypi.org/project/minigrad-framework/)
 [![Tests](https://img.shields.io/badge/tests-583%20collected%20%7C%20545%20zero--dep-brightgreen.svg)](tests/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
