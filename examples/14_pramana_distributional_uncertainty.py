@@ -4,12 +4,13 @@ examples/14_pramana_distributional_uncertainty.py — P.R.A.M.A.N.A. Distributio
 Demonstrates P.R.A.M.A.N.A. (Probabilistic Representation of Analytical Moments and Algebraic Noise-aware Autograd):
 
 1. Analytical Moment Propagation vs. 100,000-Sample Monte Carlo Simulation
-   - Exact closed-form variance for affine transformations (DistributionalLinear).
+   - Exact closed-form variance for ONE affine layer with independent inputs (DistributionalLinear);
+     stacked layers drop cross-unit covariances and are approximate.
    - First-order Taylor (delta-method) diagonal variance approximation for non-linearities (Tanh)
      across small-variance vs large-variance regimes.
-2. Trained Bayesian Weight Uncertainty & Out-of-Distribution (OOD) Detection
-   - Trains a DistributionalLinear layer with weight_uncertainty=True on in-distribution data,
-     then measures epistemic variance growth on OOD inputs.
+2. Weight-variance layer: variance scales with ||x||^2 (a magnitude effect, NOT OOD detection)
+   - Trains the same DistributionalLinear(weight_uncertainty=True) on two different supports and
+     shows the in-support/unseen ordering flips with magnitude, i.e. it is not support-aware.
 3. Heteroscedastic Noise Learning with Dual-Head HeteroscedasticMLP & Gaussian NLL Loss
    - Jointly learns input-dependent conditional mean mu(x) and heteroscedastic variance sigma^2(x).
 """
@@ -94,51 +95,48 @@ def demo_analytical_vs_monte_carlo():
 
 
 def demo_ood_hallucination_detection():
-    print_banner("EXPERIMENT 2: Trained Weight Uncertainty & Out-Of-Distribution (OOD) Detection")
-    print("Training a DistributionalLinear layer with learnable weight variance on in-distribution data,")
-    print("then evaluating epistemic variance growth as inputs move far outside the training support.\n")
+    print_banner("EXPERIMENT 2: Weight-Variance Layer: Magnitude Scaling (NOT support-aware OOD detection)")
+    print("A DistributionalLinear with weight_uncertainty=True has predictive variance")
+    print("  Var[y] = sum_i (x_i^2 * var(w_i) + mean(w_i)^2 * var(x_i) + var(w_i) * var(x_i)),")
+    print("i.e. it grows with ||x||^2 whatever data the layer was trained on. The control below trains the")
+    print("SAME layer on two different supports and probes both regions.\n")
 
-    np.random.seed(42)
-    layer = DistributionalLinear(2, 1, weight_uncertainty=True, init_log_var=-3.5)
-    loss_fn = GaussianNLLLoss()
-    optimizer = Adam(layer.parameters(), lr=0.04)
+    def trained_layer(center: float) -> DistributionalLinear:
+        np.random.seed(42)
+        layer = DistributionalLinear(2, 1, weight_uncertainty=True, init_log_var=-3.5)
+        loss_fn = GaussianNLLLoss()
+        optimizer = Adam(layer.parameters(), lr=0.04)
+        x_np = np.random.uniform(center - 0.5, center + 0.5, size=(64, 2))
+        y_np = (1.5 * x_np[:, 0:1] - 0.8 * x_np[:, 1:2]) + np.random.normal(0.0, 0.08, size=(64, 1))
+        x_train = DistributionalTensor(x_np, np.full_like(x_np, 0.002))
+        y_train = Tensor(y_np)
+        for _ in range(50):
+            optimizer.zero_grad()
+            loss_fn(layer(x_train), y_train).backward()
+            optimizer.step()
+        return layer
 
-    # Train on in-distribution data near origin: x in [-0.5, 0.5]
-    x_train_np = np.random.uniform(-0.5, 0.5, size=(64, 2))
-    y_train_np = (1.5 * x_train_np[:, 0:1] - 0.8 * x_train_np[:, 1:2]) + np.random.normal(0.0, 0.08, size=(64, 1))
-    x_train = DistributionalTensor(x_train_np, np.full_like(x_train_np, 0.002))
-    y_train = Tensor(y_train_np)
+    def var_at(layer: DistributionalLinear, point: list) -> float:
+        out = layer(DistributionalTensor([point], [[0.002, 0.002]]))
+        return float(np.mean(out.var.numpy()))
 
-    for _ in range(50):
-        optimizer.zero_grad()
-        pred = layer(x_train)
-        loss = loss_fn(pred, y_train)
-        loss.backward()
-        optimizer.step()
+    probes = {"origin (0.2,-0.3)": [0.2, -0.3], "(3.5,-4.0)": [3.5, -4.0], "far (15,-20)": [15.0, -20.0]}
+    print(f"{'Trained on support':<26} | " + " | ".join(f"{k:<18}" for k in probes))
+    print("-" * 94)
+    rows = {}
+    for center, label in ((0.0, "centred at 0 (in-support: origin)"), (4.0, "centred at 4 (in-support: (3.5,-4))")):
+        layer = trained_layer(center)
+        rows[center] = {k: var_at(layer, v) for k, v in probes.items()}
+        print(f"{label:<26} | " + " | ".join(f"{rows[center][k]:<18.5f}" for k in probes))
+    print("-" * 94)
 
-    # Evaluate calibrated layer on In-Distribution vs Mild OOD vs Extreme OOD
-    x_in_dist = DistributionalTensor([[0.2, -0.3], [0.4, 0.1]], [[0.002, 0.002], [0.002, 0.002]])
-    out_in = layer(x_in_dist)
-
-    x_mild_ood = DistributionalTensor([[3.5, -4.0]], [[0.002, 0.002]])
-    out_mild = layer(x_mild_ood)
-
-    x_extreme_ood = DistributionalTensor([[15.0, -20.0]], [[0.002, 0.002]])
-    out_extreme = layer(x_extreme_ood)
-
-    var_in_avg = float(np.mean(out_in.var.numpy()))
-    var_mild = float(np.mean(out_mild.var.numpy()))
-    var_extreme = float(np.mean(out_extreme.var.numpy()))
-
-    print(f"{'Input Regime':<25} | {'Mean Prediction':<18} | {'Predictive Variance':<24} | {'Status'}")
-    print("-" * 82)
-    print(f"{'In-Distribution (|x|<=0.5)':<25} | {out_in.mean.numpy()[0,0]:<18.4f} | {var_in_avg:<24.6f} | IN-SUPPORT")
-    print(f"{'Mild OOD (|x|~4)':<25} | {out_mild.mean.numpy()[0,0]:<18.4f} | {var_mild:<24.6f} | ELEVATED UNCERTAINTY")
-    print(f"{'Extreme OOD (|x|~20)':<25} | {out_extreme.mean.numpy()[0,0]:<18.4f} | {var_extreme:<24.6f} | HIGH OOD UNCERTAINTY")
-    print("-" * 82)
-
-    ratio = var_extreme / max(var_in_avg, 1e-9)
-    print(f"\nOOD Predictive Variance Ratio: {ratio:.1f}x higher variance on extreme OOD input.")
+    shifted = rows[4.0]
+    in_support, unseen = shifted["(3.5,-4.0)"], shifted["origin (0.2,-0.3)"]
+    print(f"\nControl (trained on support centred at 4): variance at the IN-SUPPORT point (3.5,-4.0) is "
+          f"{in_support / max(unseen, 1e-12):.1f}x the variance at the UNSEEN origin.")
+    verdict = "FAILS" if in_support > unseen else "passes"
+    print(f"Support-aware OOD check: {verdict}. Variance tracks input magnitude, not training-data coverage,")
+    print("so this layer must not be used as an OOD detector. (Use ensembles / density models for that.)")
 
 
 def demo_heteroscedastic_learning():

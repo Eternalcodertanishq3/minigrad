@@ -5,12 +5,19 @@ Distributional Uncertainty Tensors with analytical propagation of first and seco
 moments in pure NumPy/Tensor.
 
 Mathematical Scope & Approximation Guarantees:
-- Exact Moment Propagation: Closed-form exact expectation and variance for linear/affine
-  transformations (DistributionalLinear) and independent bilinear products (Goodman, 1960).
+- Exact Moment Propagation (single layer): Closed-form exact expectation and variance for ONE
+  linear/affine transformation (DistributionalLinear) with independent inputs, and for
+  independent bilinear products (Goodman, 1960). Composing layers is NOT exact: the first layer
+  makes its outputs correlated, and the next layer ignores those covariances (a purely linear
+  2-layer stack was measured 3-32% off the closed form).
+- weight_uncertainty=True: the predictive variance grows with ||x||^2 whatever the training
+  support was, so it is a magnitude effect and must not be used as an out-of-distribution detector.
 - First-Order Delta-Method Approximation: Non-linear activations (Tanh, Sigmoid, ReLU, GELU)
   use first-order Taylor expansion around the mean (Var[f(X)] ≈ [f'(mu)]^2 * Var[X]) under a
-  diagonal independence assumption. This is accurate in the small-variance regime (sigma << 1)
-  and does not track off-diagonal unit-to-unit covariances across multi-layer compositions.
+  diagonal independence assumption. Per activation this is accurate for small variance (tanh
+  variance error 1.6% at sigma=0.05, 37% at sigma=0.3); ReLU assigns zero variance for mu <= 0
+  and is unreliable near the kink. It does not track off-diagonal unit-to-unit covariances
+  across multi-layer compositions.
 - HeteroscedasticMLP & GaussianNLLLoss: Dual-head non-linear network and negative log-likelihood
   loss for learning input-dependent conditional mean mu(x) and variance sigma^2(x).
 """

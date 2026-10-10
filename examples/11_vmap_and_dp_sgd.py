@@ -77,7 +77,7 @@ def main():
     def mse_loss(pred: Tensor, target: Tensor) -> Tensor:
         return ((pred - target) ** 2).sum()
 
-    # Extract per-sample gradients in a single vectorized pass!
+    # Extract per-sample gradients (one backward pass per sample; correct but not faster than a loop)
     sample_grads = mlp.per_sample_gradients(mse_loss, batch_x, batch_y)
 
     print("  * Extracted Gradient Shapes:")

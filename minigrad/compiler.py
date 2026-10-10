@@ -393,7 +393,60 @@ static inline void minigrad_matmul_2d_tiled(const float* A, const float* B, floa
     for (int i = 0; i < size; i++) sum += in[i];
     out[0] = sum / (float)size;
 }""",
+
+    "reduce_axis": """static inline void minigrad_reduce_axis(const float* in, float* out, int outer, int red, int inner, int do_mean) {
+    for (int o = 0; o < outer; o++) {
+        for (int i = 0; i < inner; i++) {
+            float acc = 0.0f;
+            for (int r = 0; r < red; r++) acc += in[(o * red + r) * inner + i];
+            out[o * inner + i] = do_mean ? acc / (float)red : acc;
+        }
+    }
+}""",
+
+    "rsub_scalar": """static inline void minigrad_rsub_scalar(const float* in, float s, float* out, int size) {
+    for (int i = 0; i < size; i++) out[i] = s - in[i];
+}""",
+
+    "rdiv_scalar": """static inline void minigrad_rdiv_scalar(const float* in, float s, float* out, int size) {
+    for (int i = 0; i < size; i++) out[i] = s / in[i];
+}""",
+
+    "div_scalar": """static inline void minigrad_div_scalar(const float* in, float s, float* out, int size) {
+    for (int i = 0; i < size; i++) out[i] = in[i] / s;
+}""",
 }
+
+
+def _reduction_geometry(shape: Tuple[int, ...], axes: Optional[Tuple[int, ...]]) -> Optional[Tuple[int, int, int]]:
+    """
+    Map a reduction over ``axes`` of a C-contiguous array to flat (outer, reduced, inner) extents.
+
+    Returns None when the reduced axes are not one contiguous block (not expressible as a single
+    strided loop), so the caller can fail loudly instead of emitting a wrong kernel.
+    """
+    ndim = len(shape)
+    if axes is None:
+        axes = tuple(range(ndim))
+    norm = tuple(sorted(a % ndim for a in axes)) if ndim else ()
+    if not norm:
+        return (1, 1, int(np.prod(shape)) if shape else 1)
+    if norm != tuple(range(norm[0], norm[-1] + 1)):
+        return None
+    outer = int(np.prod(shape[: norm[0]])) if norm[0] > 0 else 1
+    red = int(np.prod(shape[norm[0] : norm[-1] + 1]))
+    inner = int(np.prod(shape[norm[-1] + 1 :])) if norm[-1] + 1 < ndim else 1
+    return outer, red, inner
+
+
+def _require_same_shape(op: str, a: Tensor, b: Tensor, out: Tensor) -> None:
+    """Elementwise C kernels index both operands by the flat output index: shapes must already agree."""
+    if a.data.shape != out.data.shape or b.data.shape != out.data.shape:
+        raise NotImplementedError(
+            f"Operation '{op}' with broadcasting (operand shapes {a.data.shape} and {b.data.shape} -> "
+            f"{out.data.shape}) is not supported by the C99 compiler; only equal shapes, a scalar operand, "
+            f"or a trailing-dimension bias add are supported."
+        )
 
 
 # ── Code Generator Class ───────────────────────────────────────────
@@ -430,6 +483,7 @@ class CCompiler:
         d_k: int = 32,
     ) -> None:
         self.model_name = model_name
+        self._current_op: str = ""
         self.include_main = include_main
         self.optimize = optimize
         self.binary_weights = binary_weights
@@ -476,9 +530,17 @@ class CCompiler:
 
         if self.optimize:
             from minigrad.graph_opt import optimize as opt_graph
-            self.output = opt_graph(self.output)
+            # The example input(s) are runtime variables: they must never be constant-folded away.
+            self.output = opt_graph(self.output, protected=self.example_input)
 
         self.topo = topological_sort(self.output)
+        if self.example_input:
+            _input_ids = {id(t) for t in self.example_input}
+            if not any(id(n) in _input_ids for n in self.topo):
+                raise ValueError(
+                    "The compiled output does not depend on example_input (the graph is detached from the "
+                    "input or was reduced to a constant). Refusing to emit C code that would ignore its input."
+                )
         self.node_names: Dict[int, str] = {}
         self.param_arrays: List[Tuple[str, np.ndarray]] = []
         self.const_arrays: List[Tuple[str, np.ndarray]] = []
@@ -564,7 +626,27 @@ class CCompiler:
         return max_arena_size
 
     def compile(self) -> str:
-        """Analyze the DAG and generate the full ANSI C source string."""
+        """Analyze the DAG and generate the full ANSI C source string.
+
+        Raises:
+            NotImplementedError: if the graph contains an operation (or an operand layout, e.g.
+                broadcasting, batched matmul, non-contiguous reductions) that cannot be lowered
+                to C99 *exactly*. The compiler never silently emits a wrong kernel.
+        """
+        self._current_op = ""
+        try:
+            return self._compile_impl()
+        except NotImplementedError:
+            raise
+        except (ValueError, TypeError, IndexError, KeyError, AttributeError) as exc:
+            if self._current_op:
+                raise NotImplementedError(
+                    f"Operation '{self._current_op}' could not be compiled to C99 "
+                    f"({type(exc).__name__}: {exc})."
+                ) from exc
+            raise
+
+    def _compile_impl(self) -> str:
         # 1. Identify input nodes
         input_ids = {id(inp): i for i, inp in enumerate(self.example_input)}
         for inp_id, idx in input_ids.items():
@@ -616,6 +698,7 @@ class CCompiler:
             nid = id(node)
             out_var = self.node_names[nid]
             op = node._op
+            self._current_op = op
             parents = node._prev
 
             in0 = self.node_names[id(parents[0])]
@@ -625,6 +708,11 @@ class CCompiler:
 
             if op == "matmul":
                 assert in1_node is not None
+                if in1_node.data.ndim != 2:
+                    raise NotImplementedError(
+                        f"matmul with a {in1_node.data.ndim}-D right operand (batched matmul or matrix-vector "
+                        "product) is not supported by the C99 compiler; the right operand must be a 2-D matrix."
+                    )
                 m = int(np.prod(in0_node.data.shape[:-1])) if in0_node.data.ndim > 1 else 1
                 k = in0_node.data.shape[-1]
                 n = in1_node.data.shape[-1]
@@ -648,72 +736,104 @@ class CCompiler:
 
             elif op == "add":
                 # Check for bias broadcast: (M, N) + (N,)
-                if in1_node and in0_node.data.ndim >= 2 and in1_node.data.ndim == 1 and in0_node.data.shape[-1] == in1_node.data.shape[0]:
+                if in1_node is not None and in0_node.data.ndim >= 2 and in1_node.data.ndim == 1 and in0_node.data.shape[-1] == in1_node.data.shape[0]:
                     self.used_kernels.add("add_bias")
                     m = int(np.prod(in0_node.data.shape[:-1]))
                     n = in1_node.data.shape[0]
                     self.c_instructions.append(
                         f"    minigrad_add_bias({in0}, {in1}, {out_var}, {m}, {n});"
                     )
-                elif in0_node and in1_node and in1_node.data.ndim >= 2 and in0_node.data.ndim == 1 and in1_node.data.shape[-1] == in0_node.data.shape[0]:
+                elif in0_node is not None and in1_node is not None and in1_node.data.ndim >= 2 and in0_node.data.ndim == 1 and in1_node.data.shape[-1] == in0_node.data.shape[0]:
                     self.used_kernels.add("add_bias")
                     m = int(np.prod(in1_node.data.shape[:-1]))
                     n = in0_node.data.shape[0]
                     self.c_instructions.append(
                         f"    minigrad_add_bias({in1}, {in0}, {out_var}, {m}, {n});"
                     )
-                elif in1_node and in1_node.data.size == 1:
+                elif in1_node is not None and in1_node.data.size == 1:
                     self.used_kernels.add("add_scalar")
                     s = float(in1_node.data.flat[0])
                     self.c_instructions.append(
                         f"    minigrad_add_scalar({in0}, {s:.7e}f, {out_var}, {out_size});"
                     )
+                elif in0_node is not None and in0_node.data.size == 1 and in1_node is not None:
+                    self.used_kernels.add("add_scalar")
+                    s0 = float(in0_node.data.flat[0])
+                    self.c_instructions.append(
+                        f"    minigrad_add_scalar({in1}, {s0:.7e}f, {out_var}, {out_size});"
+                    )
                 else:
+                    assert in1_node is not None
+                    _require_same_shape("add", in0_node, in1_node, node)
                     self.used_kernels.add("add")
                     self.c_instructions.append(
                         f"    minigrad_add({in0}, {in1}, {out_var}, {out_size});"
                     )
 
             elif op == "sub":
-                if in1_node and in1_node.data.size == 1:
+                if in1_node is not None and in1_node.data.size == 1:
                     self.used_kernels.add("sub_scalar")
                     s = float(in1_node.data.flat[0])
                     self.c_instructions.append(
                         f"    minigrad_sub_scalar({in0}, {s:.7e}f, {out_var}, {out_size});"
                     )
+                elif in0_node is not None and in0_node.data.size == 1 and in1_node is not None:
+                    self.used_kernels.add("rsub_scalar")
+                    s0 = float(in0_node.data.flat[0])
+                    self.c_instructions.append(
+                        f"    minigrad_rsub_scalar({in1}, {s0:.7e}f, {out_var}, {out_size});"
+                    )
                 else:
+                    assert in1_node is not None
+                    _require_same_shape("sub", in0_node, in1_node, node)
                     self.used_kernels.add("sub")
                     self.c_instructions.append(
                         f"    minigrad_sub({in0}, {in1}, {out_var}, {out_size});"
                     )
 
             elif op == "mul":
-                if in1_node and in1_node.data.size == 1:
+                if in1_node is not None and in1_node.data.size == 1:
                     self.used_kernels.add("mul_scalar")
                     s = float(in1_node.data.flat[0])
                     self.c_instructions.append(
                         f"    minigrad_mul_scalar({in0}, {s:.7e}f, {out_var}, {out_size});"
                     )
-                elif in0_node and in0_node.data.size == 1:
+                elif in0_node is not None and in0_node.data.size == 1:
                     self.used_kernels.add("mul_scalar")
                     s = float(in0_node.data.flat[0])
                     self.c_instructions.append(
                         f"    minigrad_mul_scalar({in1}, {s:.7e}f, {out_var}, {out_size});"
                     )
                 else:
+                    assert in1_node is not None
+                    _require_same_shape("mul", in0_node, in1_node, node)
                     self.used_kernels.add("mul")
                     self.c_instructions.append(
                         f"    minigrad_mul({in0}, {in1}, {out_var}, {out_size});"
                     )
 
             elif op == "div":
-                if in1_node and in1_node.data.size == 1 and float(in1_node.data.flat[0]) != 0.0:
+                if in1_node is not None and in1_node.data.size == 1 and float(in1_node.data.flat[0]) != 0.0:
                     self.used_kernels.add("mul_scalar")
                     inv_s = 1.0 / float(in1_node.data.flat[0])
                     self.c_instructions.append(
                         f"    minigrad_mul_scalar({in0}, {inv_s:.7e}f, {out_var}, {out_size});"
                     )
+                elif in1_node is not None and in1_node.data.size == 1:
+                    self.used_kernels.add("div_scalar")
+                    s1 = float(in1_node.data.flat[0])
+                    self.c_instructions.append(
+                        f"    minigrad_div_scalar({in0}, {s1:.7e}f, {out_var}, {out_size});"
+                    )
+                elif in0_node is not None and in0_node.data.size == 1 and in1_node is not None:
+                    self.used_kernels.add("rdiv_scalar")
+                    s0 = float(in0_node.data.flat[0])
+                    self.c_instructions.append(
+                        f"    minigrad_rdiv_scalar({in1}, {s0:.7e}f, {out_var}, {out_size});"
+                    )
                 else:
+                    assert in1_node is not None
+                    _require_same_shape("div", in0_node, in1_node, node)
                     self.used_kernels.add("div")
                     self.c_instructions.append(
                         f"    minigrad_div({in0}, {in1}, {out_var}, {out_size});"
@@ -745,16 +865,25 @@ class CCompiler:
 
             elif op and (op == "pow" or op.startswith("pow^")):
                 self.used_kernels.add("pow_scalar")
-                p = getattr(node, "_ctx", 2.0)
-                if isinstance(p, (int, float)):
+                p = getattr(node, "_ctx", None)
+                if isinstance(p, (int, float, np.integer, np.floating)) and not isinstance(p, bool):
                     exponent = float(p)
                 else:
-                    exponent = 2.0
+                    raise NotImplementedError(
+                        f"Operation '{op}' has a non-scalar exponent ({type(p).__name__}); "
+                        "only constant scalar exponents are supported by the C99 compiler."
+                    )
                 self.c_instructions.append(
                     f"    minigrad_pow_scalar({in0}, {exponent:.7e}f, {out_var}, {out_size});"
                 )
 
             elif op == "softmax":
+                sm_axis = getattr(node, "_ctx", None)
+                if isinstance(sm_axis, int) and in0_node.data.ndim > 0 and sm_axis % in0_node.data.ndim != in0_node.data.ndim - 1:
+                    raise NotImplementedError(
+                        f"softmax over axis {sm_axis} of a {in0_node.data.ndim}-D tensor is not supported; "
+                        "the C99 kernel normalizes over the last axis only."
+                    )
                 self.used_kernels.add("softmax")
                 n = in0_node.data.shape[-1]
                 m = int(in0_node.data.size // n)
@@ -766,8 +895,10 @@ class CCompiler:
                 beta_var = self.node_names[id(parents[2])] if len(parents) > 2 and parents[2] is not None else "NULL"
                 n = parents[1].data.size if len(parents) > 1 and parents[1] is not None else in0_node.data.shape[-1]
                 m = int(in0_node.data.size // n)
+                ln_ctx = getattr(node, "_ctx", None)
+                ln_eps = float(ln_ctx[1]) if isinstance(ln_ctx, tuple) and len(ln_ctx) >= 2 else 1e-5
                 self.c_instructions.append(
-                    f"    minigrad_layernorm({in0}, {gamma_var}, {beta_var}, {out_var}, {m}, {n}, 1e-5f);"
+                    f"    minigrad_layernorm({in0}, {gamma_var}, {beta_var}, {out_var}, {m}, {n}, {ln_eps:.7e}f);"
                 )
 
             elif op in ("batch_norm_1d", "batch_norm_1d_eval", "batchnorm1d"):
@@ -804,13 +935,25 @@ class CCompiler:
                 self.used_kernels.add("copy")
                 self.c_instructions.append(f"    minigrad_copy({in0}, {out_var}, {out_size});")
 
-            elif op == "sum":
-                self.used_kernels.add("sum")
-                self.c_instructions.append(f"    minigrad_sum({in0}, {out_var}, {in0_node.data.size});")
-
-            elif op == "mean":
-                self.used_kernels.add("mean")
-                self.c_instructions.append(f"    minigrad_mean({in0}, {out_var}, {in0_node.data.size});")
+            elif op in ("sum", "mean"):
+                red_ctx = getattr(node, "_ctx", None)
+                red_axes = red_ctx[0] if isinstance(red_ctx, tuple) and len(red_ctx) >= 1 else None
+                is_mean = op == "mean"
+                if red_axes is None:
+                    self.used_kernels.add(op)
+                    self.c_instructions.append(f"    minigrad_{op}({in0}, {out_var}, {in0_node.data.size});")
+                else:
+                    geom = _reduction_geometry(in0_node.data.shape, tuple(red_axes))
+                    if geom is None:
+                        raise NotImplementedError(
+                            f"{op}(axis={tuple(red_axes)}) over non-adjacent axes is not supported by the C99 "
+                            "compiler; reduce one axis (or one block of adjacent axes) at a time."
+                        )
+                    r_outer, r_red, r_inner = geom
+                    self.used_kernels.add("reduce_axis")
+                    self.c_instructions.append(
+                        f"    minigrad_reduce_axis({in0}, {out_var}, {r_outer}, {r_red}, {r_inner}, {1 if is_mean else 0});"
+                    )
 
             elif op == "fused_linear":
                 bias_var = self.node_names[id(parents[2])] if len(parents) > 2 and parents[2] is not None else "NULL"

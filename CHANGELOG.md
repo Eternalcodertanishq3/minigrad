@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.1] - 2026-10-10
+
+### Fixed (second independent audit)
+- **C compiler / graph optimizer:** the example input is now a *protected runtime variable* (constant folding and identity elimination no longer bake it away), so frozen (`requires_grad=False`) models and parameter-free graphs compile correctly; added `protected=` to `graph_opt.optimize`/`optimize_graph`. Compiler raises if the output does not depend on `example_input`.
+- **C compiler:** real `sum`/`mean` over one axis (or adjacent axes); scalar-left `add/sub/div`; 0-d scalar constants no longer crash; `layer_norm` honors `eps`; `softmax` off the last axis, broadcasting, batched/vector `matmul`, non-scalar `pow` exponents and non-adjacent reductions now raise `NotImplementedError` instead of emitting wrong code; unexpected emitter errors are wrapped in `NotImplementedError` naming the op.
+- **graph_opt:** `_reconstruct_reshape` used the *input* shape as the target (rebuilt reshapes became identities); fixed.
+- **Autograd:** double-backward rule for `dropout`; actionable errors for `conv2d`, `batch_norm`, `surrogate_spike`; `Embedding` accepts ndarray/list indices.
+- **S.P.A.N.D.A.:** energy model charges analog layer 0 as MACs, derives ACs from *input* spike counts, includes neuron updates and reports a conservative/optimistic range. `energy_efficiency_gain` is now conservative; new fields `snn_macs`, `neuron_updates`, `energy_efficiency_gain_optimistic`.
+- **Honest examples/docs:** T.A.R.K.A. example reports a seed-averaged supervision-vs-axiom ablation and a gap-dependent gradient-share sweep (no "100% of force", "proof" or "guarantee" strings); P.R.A.M.A.N.A. example 14 Experiment 2 shows variance tracks ||x||^2 (not support-aware) with a control; README/docstrings scoped ("single-layer-exact", NumPy-only, "Reference Paradigms").
+
+### Tests
+- 88 new value-checked tests (finite differences, closed forms, Monte Carlo, strict C input-swap differential). 583 collected = 545 zero-dep + 38 parity.
+
+---
+
 ## [1.3.4] - 2026-10-02
 
 ### 🛡️ Hardened & Verified

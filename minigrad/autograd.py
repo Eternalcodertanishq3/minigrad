@@ -527,8 +527,22 @@ def _compute_vjp(node: Tensor, g: Tensor) -> Tuple[Optional[Tensor], ...]:
         deriv_elu = np.where(a.data > 0, 1.0, float(alpha) * np.exp(a.data)).astype(a.data.dtype)
         return (g * Tensor(deriv_elu, dtype=a.data.dtype) if a.requires_grad else None,)
 
-    # Explicit error for unregistered operations
-    raise NotImplementedError(f"No VJP registered for operation '{op}'")
+    elif op == "dropout":
+        (a,) = children
+        keep_scale = getattr(node, "_ctx", None)  # mask * 1/(1-p), recorded by Dropout.forward
+        if keep_scale is None:
+            raise NotImplementedError("Dropout node has no recorded mask; cannot build its double-backward rule.")
+        return (g * Tensor(keep_scale, dtype=a.data.dtype) if a.requires_grad else None,)
+
+    # Explicit, actionable error for operations without a differentiable (second-order) rule
+    raise NotImplementedError(
+        f"No VJP registered for operation '{op}'. "
+        f"Double-backward (create_graph=True / hessian) is not implemented for it. "
+        f"First-order backward() works for it, but its derivative is not itself differentiable. "
+        f"Ops known to lack a second-order rule: conv2d, batch_norm_1d/2d, surrogate_spike and the custom "
+        f"AVYAYA/SUTRA operators. Express the computation with differentiable primitives (matmul, "
+        f"elementwise ops, layer_norm, einsum, ...) or avoid create_graph through this op."
+    )
 
 
 # ── Functional Autograd API ──────────────────────────────────────────

@@ -173,8 +173,11 @@ def demo_neuromorphic_energy_benchmark():
     print(telem.summary())
     print("\n[Hardware Advantage]:")
     print(f"  Event Sparsity:  {telem.mean_sparsity * 100:.1f}% of neurons remain quiescent in any given clock cycle.")
-    print(f"  Energy Savings:  {telem.energy_efficiency_gain:.1f}x reduction in estimated hardware power consumption!")
-    print("  Zero Multiplications: Spiking networks replace expensive floating-point MACs with sparse integer adds.")
+    print(f"  Estimated energy ratio (ANN/SNN): {telem.energy_efficiency_gain:.2f}x conservative, "
+          f"{telem.energy_efficiency_gain_optimistic:.2f}x optimistic.")
+    print("  Caveats: this network is untrained (random weights, random input), layer 0 still needs real MACs,")
+    print("  neuron updates are not free, and memory-access energy is not modeled. Treat as an order-of-magnitude")
+    print("  sketch, not a hardware result; trained, sparser networks can differ substantially.")
 
 
 def main():

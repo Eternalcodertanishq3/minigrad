@@ -4,8 +4,9 @@ examples/15_tarka_neuro_symbolic_reasoning.py — T.A.R.K.A. Neuro-Symbolic Diff
 Demonstrates Innovation 4 of miniGrad:
 T.A.R.K.A. (Tensorized Algebraic Reasoning and Knowledge-grounded Autograd)
 
-1. Zero-Data Knowledge Imprinting: Teaches a neural network transitivity and symmetry
-   with ZERO training labels, purely through backpropagating symbolic axioms!
+1. Transitive-closure deduction: a small neural relation is trained on a handful of labeled
+   facts PLUS a differentiable transitivity axiom. A seed-averaged ablation (supervision-only
+   vs supervision+axiom) reports what the axiom actually contributes.
 2. Extremely Low-Data Learning Guided by Common-Sense Axioms:
    Overcoming severe data scarcity (4 samples) by enforcing mutual exclusion rules.
 3. Targeted Gradient Flow: Proving that universal softmin quantifiers concentrate
@@ -38,6 +39,77 @@ def print_banner(title: str):
     print("\n" + "=" * 75)
     print(f"  {title}")
     print("=" * 75)
+
+
+def _closure_ablation(num_seeds: int = 10) -> None:
+    """Seed-averaged ablation: does the transitivity axiom help recover unlabeled multi-hop links?"""
+    from minigrad.nn import Linear, MSELoss, ReLU, Sequential
+    from minigrad.optim import Adam
+    from minigrad.tarka import NeuralRelation, TransitivityAxiom
+
+    n = 6
+    fwd = [(i, j) for i in range(n) for j in range(n) if j > i + 1]  # implied multi-hop, unlabeled -> 1
+    rev = [(i, j) for i in range(n) for j in range(n) if i > j + 1]  # reverse multi-hop, unlabeled -> 0
+    pos = [(i, i + 1) for i in range(n - 1)]
+    neg = [(i + 1, i) for i in range(n - 1)] + [(i, i) for i in range(n)]
+
+    def run(seed: int, use_axiom: bool, onehot: bool):
+        rng = np.random.default_rng(seed)
+        np.random.seed(seed)
+        ent = Tensor(np.eye(n) if onehot else rng.normal(size=(n, 6)))
+        d = ent.data.shape[1]
+        rel = NeuralRelation(Sequential([Linear(2 * d, 24), ReLU(), Linear(24, 1)]))
+        axiom = TransitivityAxiom(rel, weight=1.5)
+        pairs = pos + neg
+        fx = Tensor(np.array([ent.data[i] for i, _ in pairs]))
+        fy = Tensor(np.array([ent.data[j] for _, j in pairs]))
+        ft = Tensor(np.array([[1.0]] * len(pos) + [[0.0]] * len(neg)))
+        opt = Adam(rel.parameters(), lr=0.03)
+        mse = MSELoss()
+        for _ in range(250):
+            opt.zero_grad()
+            loss = mse(rel(fx, fy).tensor, ft)
+            if use_axiom:
+                loss = loss + axiom.loss(ent)
+            loss.backward()
+            opt.step()
+        m = rel.pairwise_matrix(ent).numpy()
+        f = np.array([m[a, b] for a, b in fwd])
+        r = np.array([m[a, b] for a, b in rev])
+        return (f > 0.5).mean(), (r < 0.5).mean(), axiom.evaluate(ent).satisfaction()
+
+    print(f"\nAblation over {num_seeds} seeds ({n} entities; labeled: {len(pos)} facts + {len(neg)} negatives;")
+    print(f"unlabeled test pairs: {len(fwd)} implied forward multi-hop, {len(rev)} reverse multi-hop)\n")
+    print(f"{'Embeddings':<12} | {'Training':<22} | {'Implied links found':<20} | {'Reverse rejected':<17} | {'Transitivity sat.'}")
+    print("-" * 92)
+    for onehot in (True, False):
+        for use_axiom in (False, True):
+            r = np.array([run(sd, use_axiom, onehot) for sd in range(num_seeds)])
+            name = "supervision + axiom" if use_axiom else "supervision only"
+            print(f"{'one-hot' if onehot else 'random':<12} | {name:<22} | {r[:, 0].mean() * 100:>17.1f}%  | "
+                  f"{r[:, 1].mean() * 100:>14.1f}%  | {r[:, 2].mean() * 100:>9.1f}%")
+    print("-" * 92)
+    print("Reading: the axiom reliably raises LOGICAL CONSISTENCY (transitivity satisfaction). Its effect on")
+    print("recovering unlabeled implied links is embedding-dependent (can help or hurt) - it is not a")
+    print("substitute for labels, and a constant relation also satisfies transitivity trivially.")
+
+
+def _gap_sweep() -> None:
+    """Gradient share of the single violating instance of FORALL as a function of its truth gap."""
+    print("\nGradient share of the violator vs. violation size (8 instances, others at 0.95, tau=0.05):")
+    print(f"{'Violator truth':<16} | {'Gap':<6} | {'Violator share':<15} | {'Uniform share'}")
+    print("-" * 60)
+    for v in (0.10, 0.50, 0.80, 0.90, 0.93):
+        p = np.full(8, 0.95)
+        p[4] = v
+        t = Tensor(p.copy(), requires_grad=True)
+        LogicTensor(t).forall(tau=0.05).semantic_loss(method="linear").backward()
+        g = np.abs(t.grad)
+        print(f"{v:<16.2f} | {0.95 - v:<6.2f} | {g[4] / g.sum() * 100:>12.1f}%  | {100 / 8:.1f}%")
+    print("-" * 60)
+    print("The softmin concentrates gradient on the worst instance in proportion to (gap / tau):")
+    print("near-100% for large violations, but close to uniform when the violation is small.")
+
 
 
 def demo_zero_data_knowledge_imprinting():
@@ -112,8 +184,7 @@ def demo_zero_data_knowledge_imprinting():
         f"R(0,2)={final_mat[0, 2]:.3f}, R(1,3)={final_mat[1, 3]:.3f}, R(0,3)={final_mat[0, 3]:.3f} "
         f"(while R(3,0)={final_mat[3, 0]:.3f})"
     )
-    print("\n[Proof Confirmed]: TransitivityAxiom propagated truth across multi-hop chains")
-    print("without collapsing to the trivial all-zero relation!")
+    _closure_ablation()
 
 
 def demo_low_data_mutual_exclusion():
@@ -203,7 +274,8 @@ def demo_low_data_mutual_exclusion():
 
     reduction = (1.0 - violation_tarka / max(violation_base, 1e-9)) * 100.0
     print(f"\nLogical Contradiction Reduction: {reduction:.1f}%")
-    print("[Safety Guarantee]: T.A.R.K.A. prevents physically impossible multi-class states!")
+    print("Note: this is a soft penalty evaluated at one probe point; it reduces contradictions but")
+    print("does not guarantee their absence elsewhere in the input space.")
 
 
 def demo_targeted_gradient_quantifiers():
@@ -236,9 +308,8 @@ def demo_targeted_gradient_quantifiers():
         print(f"Instance {i:<7} | {truth_values[i]:<14.2f} | {grads[i]:<18.6f} | {grad_shares[i]:>6.2f}%{flag}")
     print("-" * 68)
 
-    print(f"\nViolating Instance Gradient Share: {grad_shares[4]:.2f}% of total backprop force!")
-    print("[Mathematical Proof]: Backpropagation surgically targets the exact offending element")
-    print("without causing catastrophic forgetting on already compliant samples.")
+    print(f"\nViolating instance gradient share (this hand-picked, severe violation): {grad_shares[4]:.2f}%")
+    _gap_sweep()
 
 
 def main():
@@ -252,7 +323,7 @@ def main():
     demo_targeted_gradient_quantifiers()
 
     print("\n" + "=" * 75)
-    print("  T.A.R.K.A. Showcase Complete: All experiments verified successfully!")
+    print("  T.A.R.K.A. Showcase Complete: Done (see the computed results above).")
     print("=" * 75 + "\n")
 
 

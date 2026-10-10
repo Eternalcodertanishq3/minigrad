@@ -221,5 +221,8 @@ def test_neuromorphic_energy_telemetry():
     assert telem.mean_sparsity >= 0.50
     assert telem.dense_macs > 0
     assert telem.spiking_acs >= 0
-    assert telem.energy_efficiency_gain > 1.0
+    # The analytical model is a *range*, not a guaranteed win: only its internal consistency is asserted.
+    assert telem.energy_efficiency_gain > 0.0
+    assert telem.energy_efficiency_gain_optimistic >= telem.energy_efficiency_gain
+    assert telem.snn_macs > 0  # layer 0 sees analog input, so it costs real MACs
     assert "S.P.A.N.D.A." in telem.summary()

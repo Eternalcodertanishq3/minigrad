@@ -384,9 +384,17 @@ class MembraneDecoder(Module):
 class SpandaTelemetry:
     """
     Neuromorphic Hardware Energy & Synaptic Operations (SynOps) Diagnostics.
-    Compares T-step event-driven SNN Accumulate (AC) operations against a
-    single-pass (T=1) static ANN Multiply-Accumulate (MAC) baseline using
-    actual per-layer measured firing rates.
+    Compares a T-step SNN against a single-pass (T=1) static ANN baseline using
+    actual per-layer measured spike counts.
+
+    Accounting (all analytical, 45nm FP32 constants; NOT hardware measurements):
+      * ANN baseline:   one dense MAC per synapse per sample (B * in * out per layer).
+      * SNN layer 0:    receives *analog* input, so its synaptic work is real MACs (not ACs).
+      * SNN layer k>0:  event-driven. Every *input* spike (emitted by layer k-1) triggers
+                        ``out_features`` accumulates, so ACs = (input spike count) * out_features.
+      * Neuron updates: T * B * out per layer (leak multiply + threshold compare). Reported as a
+                        range: charged as AC (optimistic) or as MAC (conservative).
+    Memory-access energy, which usually dominates, is not modeled.
     """
     num_steps: int
     mean_firing_rate: float
@@ -397,6 +405,9 @@ class SpandaTelemetry:
     estimated_ann_energy_pj: float
     estimated_snn_energy_pj: float
     energy_efficiency_gain: float
+    snn_macs: int = 0
+    neuron_updates: int = 0
+    energy_efficiency_gain_optimistic: float = 0.0
 
     def summary(self) -> str:
         return "\n".join([
@@ -405,11 +416,16 @@ class SpandaTelemetry:
             f"  Average Spike Firing Rate:   {self.mean_firing_rate * 100:.2f}% (measured across layers)",
             f"  Temporal Event Sparsity:     {self.mean_sparsity * 100:.2f}% (zero-quiescent)",
             f"  Single-Pass ANN MACs (T=1):  {self.dense_macs:,}",
-            f"  Event-Driven Spiking ACs:    {self.spiking_acs:,} (integrated over T={self.num_steps})",
-            f"  SynOps Ratio (ANN / SNN):    {self.synops_reduction_ratio:.2f}x",
+            f"  SNN MACs (analog layer 0):   {self.snn_macs:,}",
+            f"  SNN ACs (input-spike driven):{self.spiking_acs:,} (integrated over T={self.num_steps})",
+            f"  SNN neuron updates:          {self.neuron_updates:,}",
+            f"  SynOps Ratio (ANN / SNN):    {self.synops_reduction_ratio:.2f}x  (<1 means the SNN does MORE ops)",
             f"  Estimated ANN Energy (T=1):  {self.estimated_ann_energy_pj:.2f} pJ (@ 4.6 pJ/MAC)",
-            f"  Estimated SNN Energy (T={self.num_steps}): {self.estimated_snn_energy_pj:.2f} pJ (@ 0.9 pJ/AC)",
-            f"  Neuromorphic Energy Ratio:   {self.energy_efficiency_gain:.2f}x",
+            f"  Estimated SNN Energy (T={self.num_steps}): {self.estimated_snn_energy_pj:.2f} pJ "
+            f"(conservative: updates @ MAC cost; ACs @ 0.9 pJ)",
+            f"  Energy Ratio (ANN / SNN):    {self.energy_efficiency_gain:.2f}x conservative, "
+            f"{self.energy_efficiency_gain_optimistic:.2f}x optimistic (updates @ AC cost)",
+            "  Note: analytical model only; memory-access energy is not modeled.",
         ])
 
 
@@ -456,33 +472,44 @@ class SPANDA:
         layers = model.layers if hasattr(model, "layers") else [model]
         batch_size = sample_input.shape[0] if sample_input.ndim == 2 else sample_input.shape[1]
 
+        static_input = sample_input.ndim == 2
         total_dense_macs = 0
+        total_snn_macs = 0
         total_spiking_acs = 0
+        total_neuron_updates = 0
         total_spikes_emitted = 0.0
         total_spike_sites = 0
+
+        # Spikes feeding the next layer: None means the layer receives analog (real-valued) input.
+        prev_spikes: Optional[np.ndarray] = None
+        if not static_input and bool(np.isin(sample_input.data, (0.0, 1.0)).all()):
+            prev_spikes = sample_input.data
 
         for layer in layers:
             if isinstance(layer, SpikingLinear):
                 w = layer.linear.weight.data
                 in_f, out_f = w.shape
-                # Single-pass (T=1) static ANN baseline MACs = B * in_f * out_f
-                layer_single_pass_macs = batch_size * (in_f * out_f)
-                total_dense_macs += layer_single_pass_macs
+                single_pass = batch_size * (in_f * out_f)
+                total_dense_macs += single_pass
 
-                # Actual measured firing rate for this specific layer
+                if prev_spikes is None:
+                    # Analog input: genuine multiply-accumulates (computed once if the input is static).
+                    total_snn_macs += single_pass * (1 if static_input else num_steps)
+                else:
+                    # Event-driven: every INPUT spike triggers out_f accumulates.
+                    total_spiking_acs += int(round(float(np.sum(prev_spikes)) * out_f))
+
                 if layer.last_spikes is not None:
-                    f_rate = float(np.mean(layer.last_spikes))
                     total_spikes_emitted += float(np.sum(layer.last_spikes))
                     total_spike_sites += int(layer.last_spikes.size)
+                    total_neuron_updates += int(layer.last_spikes.size)
+                    prev_spikes = layer.last_spikes
                 else:
-                    f_rate = 0.0
-
-                # Event-driven SNN ACs accumulated over all T steps
-                layer_acs = int(round(num_steps * layer_single_pass_macs * f_rate))
-                total_spiking_acs += layer_acs
+                    prev_spikes = None
             elif isinstance(layer, LIFLayer) and layer.last_spikes is not None:
                 total_spikes_emitted += float(np.sum(layer.last_spikes))
                 total_spike_sites += int(layer.last_spikes.size)
+                prev_spikes = layer.last_spikes
 
         if total_spike_sites > 0:
             mean_fr = total_spikes_emitted / total_spike_sites
@@ -495,13 +522,16 @@ class SPANDA:
 
         if total_dense_macs == 0:
             total_dense_macs = max(int(sample_input.data.size), 1)
-            total_spiking_acs = int(round(num_steps * total_dense_macs * mean_fr))
+            total_snn_macs = total_dense_macs
+            total_spiking_acs = 0
 
         # Analytical 45nm CMOS energy model (Horowitz 2014): 32-bit FP MAC ~ 4.6 pJ, AC ~ 0.9 pJ
-        ann_pj = total_dense_macs * 4.6
-        snn_pj = max(total_spiking_acs * 0.9, 1e-3)
-        gain = ann_pj / snn_pj
-        synops_ratio = total_dense_macs / max(total_spiking_acs, 1)
+        e_mac, e_ac = 4.6, 0.9
+        ann_pj = total_dense_macs * e_mac
+        snn_core_pj = total_snn_macs * e_mac + total_spiking_acs * e_ac
+        snn_conservative_pj = max(snn_core_pj + total_neuron_updates * e_mac, 1e-3)
+        snn_optimistic_pj = max(snn_core_pj + total_neuron_updates * e_ac, 1e-3)
+        synops_ratio = total_dense_macs / max(total_snn_macs + total_spiking_acs, 1)
 
         return SpandaTelemetry(
             num_steps=num_steps,
@@ -511,8 +541,11 @@ class SPANDA:
             spiking_acs=total_spiking_acs,
             synops_reduction_ratio=synops_ratio,
             estimated_ann_energy_pj=ann_pj,
-            estimated_snn_energy_pj=snn_pj,
-            energy_efficiency_gain=gain,
+            estimated_snn_energy_pj=snn_conservative_pj,
+            energy_efficiency_gain=ann_pj / snn_conservative_pj,
+            snn_macs=total_snn_macs,
+            neuron_updates=total_neuron_updates,
+            energy_efficiency_gain_optimistic=ann_pj / snn_optimistic_pj,
         )
 
     SpandaTelemetry = SpandaTelemetry

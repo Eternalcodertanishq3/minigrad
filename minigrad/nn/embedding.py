@@ -9,6 +9,7 @@ Reference: Standard embedding lookup used in Word2Vec, BERT, GPT, etc.
 from __future__ import annotations
 
 import weakref
+from typing import Sequence, Union
 
 import numpy as np
 
@@ -35,17 +36,18 @@ class Embedding(Module):
             requires_grad=True,
         )
 
-    def forward(self, indices: Tensor) -> Tensor:
+    def forward(self, indices: Union[Tensor, np.ndarray, Sequence[int]]) -> Tensor:
         """
         Look up embeddings for the given indices.
 
         Args:
-            indices: Integer tensor of any shape containing indices in [0, num_embeddings)
+            indices: Integer Tensor, NumPy array, or (nested) list of indices in [0, num_embeddings)
         Returns:
             Tensor of shape (*indices.shape, embedding_dim)
         """
-        # Use integer indices for lookup
-        idx = indices.data.astype(np.intp)
+        # Use integer indices for lookup (accept Tensor / ndarray / list)
+        raw = indices.data if isinstance(indices, Tensor) else np.asarray(indices)
+        idx = np.asarray(raw).astype(np.intp)
         out_data = self.weight.data[idx]
 
         out = Tensor(

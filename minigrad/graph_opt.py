@@ -16,7 +16,7 @@ Contract A: Algebraic transformations assume finite real values within the suppo
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, FrozenSet, Iterable, List, Optional, Set, Tuple, Union
 
 import numpy as np
 
@@ -172,8 +172,8 @@ register_reconstructor("softmax", _reconstruct_softmax)
 
 
 def _reconstruct_reshape(parents: Tuple[Tensor, ...], ctx: Any, orig: Tensor) -> Tensor:
-    if ctx is not None and isinstance(ctx, (tuple, list)):
-        return parents[0].reshape(*ctx)
+    # NOTE: `Tensor.reshape` records the *input* shape in ``_ctx`` (needed for backward),
+    # so ``ctx`` is NOT the target shape. The target is always the original node's output shape.
     return parents[0].reshape(*orig.data.shape)
 
 
@@ -282,9 +282,21 @@ class OptimizationReport:
 
 # ── Helper Predicates ───────────────────────────────────────────────
 
-def _is_constant_zero(t: Tensor) -> bool:
-    """True if t is a non-trainable tensor with all elements equal to 0."""
-    if t.requires_grad:
+_NO_DYNAMIC: FrozenSet[int] = frozenset()
+
+
+def _dependent_ids(topo: List[Tensor], protected: FrozenSet[int]) -> Set[int]:
+    """Ids of every node in ``topo`` that is, or transitively depends on, a protected input."""
+    dyn: Set[int] = set()
+    for n in topo:
+        if id(n) in protected or any(id(p) in dyn for p in n._prev):
+            dyn.add(id(n))
+    return dyn
+
+
+def _is_constant_zero(t: Tensor, dyn: Union[Set[int], FrozenSet[int]] = _NO_DYNAMIC) -> bool:
+    """True if t is a non-trainable, input-independent tensor with all elements equal to 0."""
+    if t.requires_grad or id(t) in dyn:
         return False
     if t.data.size == 0:
         return False
@@ -293,9 +305,9 @@ def _is_constant_zero(t: Tensor) -> bool:
     return bool(np.all(t.data == 0.0))
 
 
-def _is_constant_one(t: Tensor) -> bool:
-    """True if t is a non-trainable tensor with all elements equal to 1."""
-    if t.requires_grad:
+def _is_constant_one(t: Tensor, dyn: Union[Set[int], FrozenSet[int]] = _NO_DYNAMIC) -> bool:
+    """True if t is a non-trainable, input-independent tensor with all elements equal to 1."""
+    if t.requires_grad or id(t) in dyn:
         return False
     if t.data.size == 0:
         return False
@@ -318,13 +330,20 @@ def _get_consumer_counts(topo: List[Tensor]) -> Dict[int, int]:
 
 # ── Optimization Passes ─────────────────────────────────────────────
 
-def _constant_folding_pass(root: Tensor) -> Tuple[Tensor, int, int]:
+def _constant_folding_pass(
+    root: Tensor, protected: FrozenSet[int] = _NO_DYNAMIC
+) -> Tuple[Tensor, int, int]:
     """
     Pass 1: Constant Folding.
     Identifies subgraphs where all inputs are non-trainable constants (requires_grad=False)
     and replaces them with a precomputed constant leaf node.
+
+    Tensors whose ids are in ``protected`` (e.g. the example input handed to the C compiler)
+    are *runtime inputs*, not constants: they and everything that depends on them are never folded.
     """
     topo = topological_sort(root)
+    dyn_orig = _dependent_ids(topo, protected)
+    dyn_new: Set[int] = set(protected)
     node_map: Dict[int, Tensor] = {}
     folded_count = 0
     memory_saved = 0
@@ -337,9 +356,9 @@ def _constant_folding_pass(root: Tensor) -> Tuple[Tensor, int, int]:
 
         updated_parents = tuple(node_map[id(p)] for p in node._prev)
 
-        # Check if all parents are non-trainable constants
-        all_constant_parents = all(not p.requires_grad for p in updated_parents)
-        if all_constant_parents and not node.requires_grad:
+        # Check if all parents are non-trainable, input-independent constants
+        all_constant_parents = all(not p.requires_grad and id(p) not in dyn_new for p in updated_parents)
+        if all_constant_parents and not node.requires_grad and nid not in dyn_orig:
             # Eagerly evaluated constant
             const_leaf = Tensor(node.data.copy(), requires_grad=False)
             node_map[nid] = const_leaf
@@ -351,11 +370,13 @@ def _constant_folding_pass(root: Tensor) -> Tuple[Tensor, int, int]:
                 node_map[nid] = new_node
             else:
                 node_map[nid] = node
+        if nid in dyn_orig:
+            dyn_new.add(id(node_map[nid]))
 
     return node_map[id(root)], folded_count, memory_saved
 
 
-def _algebraic_rewrite_pass(root: Tensor) -> Tuple[Tensor, int]:
+def _algebraic_rewrite_pass(root: Tensor, protected: FrozenSet[int] = _NO_DYNAMIC) -> Tuple[Tensor, int]:
     """
     Pass 2: Algebraic Identity Simplification.
     Collapses operations that are mathematically identity transformations:
@@ -364,8 +385,14 @@ def _algebraic_rewrite_pass(root: Tensor) -> Tuple[Tensor, int]:
     trainable parameters always receive backpropagated gradients!
     """
     topo = topological_sort(root)
+    dyn_orig = _dependent_ids(topo, protected)
+    dyn_new: Set[int] = set(protected)
     node_map: Dict[int, Tensor] = {}
     identities_count = 0
+
+    def is_c(t: Tensor) -> bool:
+        """Compile-time constant: non-trainable AND independent of every protected runtime input."""
+        return (not t.requires_grad) and id(t) not in dyn_new
 
     for node in topo:
         nid = id(node)
@@ -381,16 +408,16 @@ def _algebraic_rewrite_pass(root: Tensor) -> Tuple[Tensor, int]:
         replacement: Optional[Tensor] = None
 
         if op == "add" and p1 is not None:
-            if _is_constant_zero(p1):
+            if _is_constant_zero(p1, dyn_new):
                 replacement = p0
                 identities_count += 1
-            elif _is_constant_zero(p0):
+            elif _is_constant_zero(p0, dyn_new):
                 replacement = p1
                 identities_count += 1
-            elif not p1.requires_grad and p1.data.size == 1 and p0._op == "add" and len(p0._prev) == 2:
+            elif is_c(p1) and p1.data.size == 1 and p0._op == "add" and len(p0._prev) == 2:
                 # Chained scalar add: (x + c1) + c2 -> x + (c1 + c2)
                 p0_left, p0_right = p0._prev
-                if not p0_right.requires_grad and p0_right.data.size == 1:
+                if is_c(p0_right) and p0_right.data.size == 1:
                     c_sum = float(p0_right.data.flat[0]) + float(p1.data.flat[0])
                     if np.isclose(c_sum, 0.0):
                         replacement = p0_left
@@ -398,7 +425,7 @@ def _algebraic_rewrite_pass(root: Tensor) -> Tuple[Tensor, int]:
                     else:
                         replacement = p0_left + c_sum
                         identities_count += 1
-                elif not p0_left.requires_grad and p0_left.data.size == 1:
+                elif is_c(p0_left) and p0_left.data.size == 1:
                     c_sum = float(p0_left.data.flat[0]) + float(p1.data.flat[0])
                     if np.isclose(c_sum, 0.0):
                         replacement = p0_right
@@ -408,7 +435,7 @@ def _algebraic_rewrite_pass(root: Tensor) -> Tuple[Tensor, int]:
                         identities_count += 1
 
         elif op == "sub" and p1 is not None:
-            if _is_constant_zero(p1):
+            if _is_constant_zero(p1, dyn_new):
                 replacement = p0
                 identities_count += 1
             elif p0 is p1 and not p0.requires_grad:
@@ -416,23 +443,23 @@ def _algebraic_rewrite_pass(root: Tensor) -> Tuple[Tensor, int]:
                 identities_count += 1
 
         elif op == "mul" and p1 is not None:
-            if _is_constant_one(p1):
+            if _is_constant_one(p1, dyn_new):
                 replacement = p0
                 identities_count += 1
-            elif _is_constant_one(p0):
+            elif _is_constant_one(p0, dyn_new):
                 replacement = p1
                 identities_count += 1
-            elif _is_constant_zero(p1):
+            elif _is_constant_zero(p1, dyn_new):
                 replacement = Tensor(np.zeros_like(node.data), requires_grad=False)
                 identities_count += 1
-            elif _is_constant_zero(p0):
+            elif _is_constant_zero(p0, dyn_new):
                 replacement = Tensor(np.zeros_like(node.data), requires_grad=False)
                 identities_count += 1
-            elif not p1.requires_grad and p1.data.size == 1 and p0._op == "mul" and len(p0._prev) == 2:
+            elif is_c(p1) and p1.data.size == 1 and p0._op == "mul" and len(p0._prev) == 2:
                 # Chained scalar mul: (x * c1) * c2 -> x * (c1 * c2)
                 # Handles double negation: (x * -1) * -1 -> x * 1 -> x
                 p0_left, p0_right = p0._prev
-                if not p0_right.requires_grad and p0_right.data.size == 1:
+                if is_c(p0_right) and p0_right.data.size == 1:
                     c_prod = float(p0_right.data.flat[0]) * float(p1.data.flat[0])
                     if np.isclose(c_prod, 1.0):
                         replacement = p0_left
@@ -443,7 +470,7 @@ def _algebraic_rewrite_pass(root: Tensor) -> Tuple[Tensor, int]:
                     else:
                         replacement = p0_left * c_prod
                         identities_count += 1
-                elif not p0_left.requires_grad and p0_left.data.size == 1:
+                elif is_c(p0_left) and p0_left.data.size == 1:
                     c_prod = float(p0_left.data.flat[0]) * float(p1.data.flat[0])
                     if np.isclose(c_prod, 1.0):
                         replacement = p0_right
@@ -456,7 +483,7 @@ def _algebraic_rewrite_pass(root: Tensor) -> Tuple[Tensor, int]:
                         identities_count += 1
 
         elif op == "div" and p1 is not None:
-            if _is_constant_one(p1):
+            if _is_constant_one(p1, dyn_new):
                 replacement = p0
                 identities_count += 1
             elif p0 is p1 and not p0.requires_grad:
@@ -511,6 +538,8 @@ def _algebraic_rewrite_pass(root: Tensor) -> Tuple[Tensor, int]:
                 node_map[nid] = new_node
             else:
                 node_map[nid] = node
+        if nid in dyn_orig:
+            dyn_new.add(id(node_map[nid]))
 
     return node_map[id(root)], identities_count
 
@@ -600,6 +629,7 @@ def optimize_graph(
     enable_algebraic: bool = True,
     enable_fusion: bool = True,
     verify: bool = False,
+    protected: Optional[Iterable[Tensor]] = None,
 ) -> Tuple[Tensor, OptimizationReport]:
     """
     Run full symbolic optimization pipeline on a computation graph.
@@ -615,12 +645,17 @@ def optimize_graph(
         enable_fusion: Enable operator fusion (Linear+ReLU).
         verify: If True, execute 3-layer differential validation ensuring exact forward
                 and backward parity within dynamic tolerance (atol + rtol * |reference|).
+        protected: Runtime input tensors (e.g. the example input given to the C compiler).
+                They are treated as *variables*, never as constants: constant folding and
+                identity elimination will not fold or remove them, even if they do not
+                require grad or happen to contain all zeros / ones.
 
     Returns:
         Tuple of (optimized_root_tensor, OptimizationReport).
     """
     initial_nodes = len(topological_sort(root))
     current_root = root
+    protected_ids: FrozenSet[int] = frozenset(id(t) for t in protected) if protected else _NO_DYNAMIC
 
     # Verification snapshot
     y_orig = None
@@ -649,7 +684,7 @@ def optimize_graph(
 
         # 1. Constant folding
         if enable_constant_folding:
-            current_root, folded, mem_fold = _constant_folding_pass(current_root)
+            current_root, folded, mem_fold = _constant_folding_pass(current_root, protected_ids)
             if folded > 0:
                 total_folded += folded
                 total_memory_saved += mem_fold
@@ -657,7 +692,7 @@ def optimize_graph(
 
         # 2. Algebraic identities
         if enable_algebraic:
-            current_root, identities = _algebraic_rewrite_pass(current_root)
+            current_root, identities = _algebraic_rewrite_pass(current_root, protected_ids)
             if identities > 0:
                 total_identities += identities
                 changed = True
@@ -753,7 +788,10 @@ def optimize_graph(
     return current_root, report
 
 
-def optimize(root: Tensor, verify: bool = False) -> Tensor:
-    """Convenience function: optimize computational graph and return the optimized root tensor."""
-    opt_root, _ = optimize_graph(root, verify=verify)
+def optimize(root: Tensor, verify: bool = False, protected: Optional[Iterable[Tensor]] = None) -> Tensor:
+    """Convenience function: optimize computational graph and return the optimized root tensor.
+
+    ``protected`` lists runtime input tensors that must never be folded or eliminated as constants.
+    """
+    opt_root, _ = optimize_graph(root, verify=verify, protected=protected)
     return opt_root

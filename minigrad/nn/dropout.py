@@ -51,6 +51,7 @@ class Dropout(Module):
 
         out_data = x.data * mask * scale
         out = Tensor(out_data, requires_grad=x.requires_grad, _children=(x,), _op="dropout")
+        out._ctx = mask * scale  # recorded so the double-backward rule can rebuild the same derivative
 
         def _backward() -> None:
             if x.requires_grad:

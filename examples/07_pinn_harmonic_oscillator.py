@@ -6,9 +6,10 @@ Solves the second-order Ordinary Differential Equation (ODE):
 Subject to initial conditions:
     u(0) = 1.0,  u'(0) = 0.0
 
-A neural network u_θ(t) is trained entirely by minimizing:
-1. PDE residual loss on collocation points: L_pde = ||u_tt + 2ζω₀ u_t + ω₀² u||²
-2. Boundary condition loss at t=0:          L_bc  = (u(0) - 1)² + (u'(0) - 0)²
+The network uses a hard-constraint trial function u_θ(t) = 1 + t² · MLP_θ(t), which satisfies
+u(0) = 1 and u'(0) = 0 *exactly* by construction (no initial-condition loss term is needed).
+It is trained by minimizing only the PDE residual on collocation points:
+    L_pde = ||u_tt + 2ζω₀ u_t + ω₀² u||²
 
 This demonstrates miniGrad's higher-order automatic differentiation (`grad` with `create_graph=True`),
 solving differential equations without labeled training data.
